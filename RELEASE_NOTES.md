@@ -1,20 +1,57 @@
 ## What's Changed
 
-### Fixed
+### Re-derived v2.3.0 on the CLIProxyAPI v8 plugin SDK
 
-- Accept Responses `function_call_output.output` as either a string or a content-part array. Responses clients using tool images no longer fail locally with `cannot unmarshal array ... output of type string` when routed to DeepSeek, GLM, or another Chat Completions model.
-- Keep all tool text, including error text, in its original tool role and preserve `call_id` pairing. Use numbered markers for image positions and forward images in order after the consecutive tool results, so parallel calls finish before the image-bearing user message. Preserve image URL/data and Responses detail hints.
-- Preserve text/image order inside Anthropic `tool_result` blocks. Native Responses passthrough, normal string results, reasoning replay and model routing retain their existing behavior. Unsupported file/custom-tool conversions fail explicitly rather than silently losing content.
+This release replaces the stale v1.0.3 tree with a re-derivation of the deployed
+v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
 
-### Regression Coverage
+- **SDK generation:** `github.com/router-for-me/CLIProxyAPI/v8 v8.0.0` (RPC
+  schema 6). The native C ABI shape is unchanged (`ABIVersion == 1`), so the
+  CGO glue keeps exporting `cliproxy_plugin_init`, `cliproxyPluginCall`,
+  `cliproxyPluginFree` and `cliproxyPluginShutdown`.
+- **Config schema:** new `plans:` list. Each enabled plan owns a base URL, a
+  catalog URL (`{base-url}/models` by default) and its own model prefix
+  (`go` → `opencode-go`, `zen` → `opencode-zen`). One `api-keys` pool serves
+  every plan. Legacy single-plan configs (`base-url` + `model-prefix`) still
+  load as one implicit plan named `go`.
+- **Per-plan catalog and routing:** every catalog refresh fetches each enabled
+  plan's catalog; a disabled plan is neither fetched nor routable. Each model
+  record carries its plan name and base URL, so execution joins the endpoint
+  onto the plan's own upstream.
+- **Quota surface:** the plugin-owned management page and `quota-usage` route
+  are gone. Quota now renders on the host's native credential cards through the
+  v8 `QuotaProvider` interface (`quota.identifier` / `describe` / `fetch` /
+  `reset`), with the rolling, weekly and monthly windows normalized into
+  buckets. `quota.reset` reports `unsupported`.
+- **Identity:** runtime plugin id stays `opencode-go-provider` (the EasyCLI
+  config-contract key); the shared library is published as
+  `easycliproxyapi-opencode-provider` to match the deployed artifact. Version
+  is `2.3.0`; `registry.json` and the repository URL now point at this
+  repository instead of the upstream fork.
 
-- Reproduce the previous array decode failure with synthetic text/image outputs, then cover string/array mixtures, empty/text/error results, multiple tool calls, image ordering/detail, tool-role isolation and malformed/unsupported parts.
-- Exercise DeepSeek and GLM through both public plugin execution paths, session derivation, isolated HTTP serialization and Responses stream/non-stream conversion. Verify native Responses requests remain byte-identical.
+### Tests (offline, no network, no secrets)
+
+- ABI contract pins: ABI version, RPC schema version, registration identity,
+  version, repository and capability set (including `quota_provider`, excluding
+  `management_api`).
+- Plan schema: template-shaped YAML, per-plan prefixes, disabled plans,
+  duplicate/ambiguous plan rejection and legacy single-plan compatibility.
+- Plan-aware catalog: per-plan refresh, stale retention for one failing plan,
+  fail-closed for an all-plan outage, and per-record upstream base URLs.
+- Quota card surface: identifier/describe/fetch/reset envelopes, normalized
+  response shape, plan selection by credential attribute, credential
+  redaction and upstream-failure classification.
+- Auth records: the canonical record written by reconciliation parses back
+  through `auth.parse`.
 
 ### Upgrade Notes
 
-- Update **OpenCode Go Provider** (`opencode-go-provider`) through CLIProxyAPI Management Center → Plugin Store. No configuration migration is required from v1.0.2; the model prefix remains `opencode-go/`.
-- The store hot-swaps the versioned native library. No Pi update or restart is required for this server-side fix. Manually installed libraries must be replaced/reloaded using the host's existing plugin procedure; no running services are changed by this release.
-- Image forwarding preserves the payload; image understanding still requires vision support in the selected upstream model. Private sessions or live credentials are not used in the regression tests.
-
-**Full Changelog**: https://github.com/xspeed1989/opencode-go-cliproxyapi/compare/v1.0.2...v1.0.3
+- Config migration: move `base-url`/`model-prefix` under a `plans:` entry (or
+  keep them as the legacy single-plan shorthand). `api-keys` is unchanged.
+- The model names are unchanged for the `go` plan; a second enabled plan adds
+  its own prefix namespace.
+- Credential records (`opencode-go-key-<sha256(api_key)>.json`) are unchanged;
+  reconciliation still creates, re-enables and removes them from `api-keys`.
+- This repository is source-only for this release. Do not overwrite a running
+  deployment without comparing this surface against the live plugin's
+  registration log first.

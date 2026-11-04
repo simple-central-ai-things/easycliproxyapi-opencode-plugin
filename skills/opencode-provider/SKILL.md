@@ -21,33 +21,37 @@ quota page in the management panel.
 - `internal/plugin/auth_reconcile.go` — credential reconciliation
 - `internal/adapter/{chatcompletions,messages,responses,shared}/` — protocol translation
 - `internal/catalog/` — model catalog discovery; `internal/config/` — config schema
-- `registry.json` — plugin-store identity (points at the upstream fork, not this repo)
-- `resources/quota_page.html` — embedded management page (`/quota`)
+- `registry.json` — plugin-store identity (this repository, version 2.3.0)
+- `PROVENANCE.md` — evidence chain for the re-derived v2.3.0 surface
 - `tests/live_*_test.go` — behind the `live` build tag; CI runs offline
 - `simple-central-proxy-manager/easycli-proxy/` — the EasyCLI stack this plugin runs in
   (config template, deploy.sh, `:8792`, SCSM `tag:easycli` rendering)
 
 ## Contracts / env
 
-- Plugin id (repo source): `opencode-go-provider`; provider id + model prefix:
-  `opencode-go` (models publish as `opencode-go/<model>`).
-- Live plugin id: `easycliproxyapi-opencode-provider` (v2.3.0 binary — see Gotchas).
-- Config: `plugins.configs.opencode-go-provider` (v1.0.3 schema: `api-keys`,
-  `base-url` default `https://opencode.ai/zen/go/v1`, `catalog-url`,
-  `model-prefix`, `catalog`, `protocols`, `route-overrides`, `request-timeout`,
-  `max-response-bytes`, `allow-http`). Live v2.3.0 config uses `plans:` — not
-  supported by the repo schema.
+- Plugin id: `opencode-go-provider` (registration metadata, store id and the
+  EasyCLI config key). Library filename: `easycliproxyapi-opencode-provider`
+  (CI `LIB_BASE`) — the deployed artifact name, not the runtime identity.
+- Provider id: `opencode-go`; each enabled plan publishes its own model prefix
+  (`opencode-go/<model>`, `opencode-zen/<model>`). Bare upstream IDs also resolve.
+- Config: `plugins.configs.opencode-go-provider` with a shared `api-keys` pool
+  and a `plans:` list (`name`, `base-url`, `catalog-url`, `model-prefix`,
+  `enabled`, `note`). A config without `plans:` loads as one implicit `go` plan
+  from `base-url`/`model-prefix`. Shared: `catalog`, `protocols`,
+  `route-overrides`, `request-timeout`, `max-response-bytes`, `allow-http`.
 - `api-keys` values support `${ENV_VAR}` expansion (`os.ExpandEnv`). Live keys
   are `OPENCODE_GO_API_KEY_1/2`, rendered from the SCSM `tag:easycli` export by
   SCPM `easycli-proxy/deploy.sh` (names only — values never in this repo).
 - Auth records: `opencode-go-key-<sha256(api_key)>.json` in the CPA auth dir;
   reconciled on every register/reconfigure; removals use staged prove-then-delete.
-- Management API: `POST /plugins/opencode-go-provider/quota-usage`; quota
-  display never affects routing. API-key only: auth login, `executor.count_tokens`
-  and `executor.http_request` return `unsupported`.
-- SDK: `github.com/router-for-me/CLIProxyAPI/v7 v7.2.138`; `cliproxy_plugin_init`
-  rejects an ABI version mismatch; registration metadata must keep
-  `GitHubRepository` set (host `validPlugin` gate).
+- Quota: v8 `QuotaProvider` native cards (`quota.identifier` / `describe` /
+  `fetch` / `reset`); no plugin-owned management page. `quota.fetch` uses the
+  credential attribute `plan`, else the first enabled plan; `quota.reset` is
+  `unsupported`. API-key only: auth login, `executor.count_tokens` and
+  `executor.http_request` return `unsupported`.
+- SDK/ABI: `github.com/router-for-me/CLIProxyAPI/v8 v8.0.0`, C ABI version 1,
+  RPC schema 6; `cliproxy_plugin_init` rejects an ABI version mismatch;
+  registration metadata must keep `GitHubRepository` set (host `validPlugin` gate).
 
 ## Common operations
 
@@ -55,7 +59,7 @@ quota page in the management panel.
 cd easycliproxyapi-opencode-plugin
 go vet ./... && go test ./...   # offline; live_*_test.go need the `live` tag
 TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
-  go build -tags debug -buildmode=c-shared -o plugins/linux/amd64/opencode-go-provider.so .
+  go build -tags debug -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .
 ```
 
 - Always `-tags debug` for local builds (CONTRIBUTING.md); release packaging is
@@ -72,20 +76,17 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
 
 ## Gotchas
 
-- **Tracked known gap — v1.0.3 repo vs v2.3.0 live.** The repo holds upstream
-  v1.0.3 source (id `opencode-go-provider`, CPA v7 SDK, single-`base-url`
-  schema). The live plugin is `easycliproxyapi-opencode-provider.so` v2.3.0
-  (renamed id, CLIProxyAPI v8 host, `plans:` config schema) whose source was
-  never pushed. The host binary is canonical until the source is recovered or
-  re-derived. Do NOT build from this repo over the live binary, and do not
-  "fix" live behavior from this source — the docs hub page documents the live
-  identity, not this source.
-- The plugin-store identity is upstream's: `registry.json` points at
-  `github.com/xspeed1989/opencode-go-cliproxyapi`, so store installs resolve
-  that fork's releases, not this repo's.
+- **Re-derived, offline-verified only.** This repo reconstructs the deployed
+  v2.3.0 surface (v8 SDK, `plans:` schema, native quota cards); the original
+  tree was never pushed. `PROVENANCE.md` records the evidence chain. Do not
+  assume binary equality with the running `.so`: compare a build's registration
+  surface with the live registration log before replacing an artifact.
+- The plugin-store identity is this repo's: `registry.json` `repository` points
+  at `simple-central-ai-things/easycliproxyapi-opencode-plugin`.
 - Credential reconciliation is best-effort on purpose: housekeeping failures
   are `warn`s; a failed registration would drop the whole provider.
-- The live EasyCLI config is panel-managed; SCPM's template/tests still pin
-  `opencode-go-provider` — template edits prove nothing about the running host.
+- The EasyCLI config is panel-managed; SCPM's template/tests pin
+  `opencode-go-provider` and the `plans:` shape — template edits prove nothing
+  about the running host.
 - Registration metadata with an empty `GitHubRepository` is rejected by the
   host `validPlugin` gate.
