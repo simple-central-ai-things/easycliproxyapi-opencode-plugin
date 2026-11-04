@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 
 	"opencode-go-cliproxyapi/internal/catalog"
 	"opencode-go-cliproxyapi/internal/config"
@@ -433,7 +433,7 @@ func TestRegisterSuccessPublishesModels(t *testing.T) {
 		t.Fatalf("schema_version = %d, want %d", reg.SchemaVersion, pluginabi.SchemaVersion)
 	}
 	if reg.Metadata.Name != "opencode-go-provider" || reg.Metadata.Version != pluginVersion ||
-		len(reg.Metadata.ConfigFields) != 10 {
+		reg.Metadata.GitHubRepository != githubRepoURL || len(reg.Metadata.ConfigFields) != 11 {
 		t.Fatalf("metadata wrong: %+v", reg.Metadata)
 	}
 	if !reg.Capabilities.ModelProvider || !reg.Capabilities.AuthProvider {
@@ -495,6 +495,7 @@ func TestRegistrationConfigFields(t *testing.T) {
 		typ  pluginapi.ConfigFieldType
 	}{
 		{"api-keys", pluginapi.ConfigFieldTypeArray},
+		{"plans", pluginapi.ConfigFieldTypeArray},
 		{"base-url", pluginapi.ConfigFieldTypeString},
 		{"catalog-url", pluginapi.ConfigFieldTypeString},
 		{"model-prefix", pluginapi.ConfigFieldTypeObject},

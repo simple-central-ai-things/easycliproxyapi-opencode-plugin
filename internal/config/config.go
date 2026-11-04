@@ -27,6 +27,19 @@ type ModelPrefix struct {
 	Value   string
 }
 
+// Plan is one EasyCLI "plan": a named upstream base URL plus the client-facing
+// model prefix its catalog publishes. The deployed v2.3.0 config schema groups
+// the upstream under `plans:` (e.g. `go` with prefix `opencode-go`, `zen` with
+// prefix `opencode-zen`), so one provider keeps one key pool while each plan
+// routes to its own upstream and model namespace.
+type Plan struct {
+	Name        string
+	BaseURL     string
+	CatalogURL  string
+	ModelPrefix ModelPrefix
+	Enabled     bool
+}
+
 type APIKey struct {
 	Value string
 }
@@ -48,6 +61,10 @@ type RouteOverride struct {
 }
 
 type Config struct {
+	// Plans are the enabled-by-config upstreams. BaseURL/ModelPrefix/
+	// CatalogURL below mirror the primary plan (first enabled, else first
+	// declared) so callers that predate plans keep one resolved view.
+	Plans            []Plan
 	BaseURL          string
 	CatalogURL       string
 	ModelPrefix      ModelPrefix
@@ -64,6 +81,7 @@ type Config struct {
 // (apply default) from explicitly-set values including "" (validate as-is).
 // Unknown fields are ignored (host may pass extra keys).
 type rawConfig struct {
+	Plans            []rawPlan                `yaml:"plans"`
 	BaseURL          *string                  `yaml:"base-url"`
 	CatalogURL       *string                  `yaml:"catalog-url"`
 	ModelPrefix      rawPrefix                `yaml:"model-prefix"`
@@ -74,6 +92,16 @@ type rawConfig struct {
 	AllowHTTP        bool                     `yaml:"allow-http"`
 	RequestTimeout   *string                  `yaml:"request-timeout"`
 	MaxResponseBytes *int64                   `yaml:"max-response-bytes"`
+}
+
+// rawPlan mirrors one `plans:` entry. `enabled` defaults to true.
+// `note` is operator documentation and is ignored.
+type rawPlan struct {
+	Name        string    `yaml:"name"`
+	BaseURL     *string   `yaml:"base-url"`
+	CatalogURL  *string   `yaml:"catalog-url"`
+	ModelPrefix rawPrefix `yaml:"model-prefix"`
+	Enabled     *bool     `yaml:"enabled"`
 }
 
 type rawPrefix struct {
@@ -128,11 +156,6 @@ func Load(yamlBytes []byte) (Config, error) {
 		return Config{}, fmt.Errorf("request-timeout: must be positive")
 	}
 	c := Config{
-		BaseURL: orDefault(raw.BaseURL, DefaultBaseURL),
-		ModelPrefix: ModelPrefix{
-			Enabled: orDefault(raw.ModelPrefix.Enabled, true),
-			Value:   orDefault(raw.ModelPrefix.Value, DefaultModelPrefix),
-		},
 		APIKeys: keys,
 		Catalog: Catalog{
 			RefreshInterval:       refreshInterval,
@@ -148,12 +171,50 @@ func Load(yamlBytes []byte) (Config, error) {
 		RequestTimeout:   requestTimeout,
 		MaxResponseBytes: orDefault(raw.MaxResponseBytes, DefaultMaxResponseBytes),
 	}
+	// Legacy top-level base-url/model-prefix are the fallback for plans that
+	// omit them; with no plans at all they define the single implicit plan,
+	// so a v1.0.3 config keeps loading unchanged.
+	topBaseURL := orDefault(raw.BaseURL, DefaultBaseURL)
+	topPrefix := ModelPrefix{
+		Enabled: orDefault(raw.ModelPrefix.Enabled, true),
+		Value:   orDefault(raw.ModelPrefix.Value, DefaultModelPrefix),
+	}
+	var topCatalog *string
 	if raw.CatalogURL != nil {
-		// Mirror the derived-default trim so an explicit trailing-slash
-		// catalog-url cannot double up separators downstream.
-		c.CatalogURL = strings.TrimRight(*raw.CatalogURL, "/")
-	} else {
-		c.CatalogURL = strings.TrimRight(c.BaseURL, "/") + "/models"
+		trimmed := strings.TrimRight(*raw.CatalogURL, "/")
+		topCatalog = &trimmed
+	}
+	if len(raw.Plans) == 0 {
+		raw.Plans = []rawPlan{{
+			Name:        "go",
+			BaseURL:     &topBaseURL,
+			ModelPrefix: rawPrefix{Enabled: &topPrefix.Enabled, Value: &topPrefix.Value},
+			CatalogURL:  topCatalog,
+		}}
+	}
+	plans := make([]Plan, len(raw.Plans))
+	for i, rp := range raw.Plans {
+		plan := Plan{
+			Name:    strings.TrimSpace(rp.Name),
+			BaseURL: strings.TrimRight(orDefault(rp.BaseURL, topBaseURL), "/"),
+			ModelPrefix: ModelPrefix{
+				Enabled: orDefault(rp.ModelPrefix.Enabled, topPrefix.Enabled),
+				Value:   orDefault(rp.ModelPrefix.Value, topPrefix.Value),
+			},
+			Enabled: orDefault(rp.Enabled, true),
+		}
+		if rp.CatalogURL != nil {
+			// Mirror the derived-default trim so an explicit trailing-slash
+			// catalog-url cannot double up separators downstream.
+			plan.CatalogURL = strings.TrimRight(*rp.CatalogURL, "/")
+		} else {
+			plan.CatalogURL = plan.BaseURL + "/models"
+		}
+		plans[i] = plan
+	}
+	c.Plans = plans
+	if primary, ok := c.primaryPlan(); ok {
+		c.BaseURL, c.CatalogURL, c.ModelPrefix = primary.BaseURL, primary.CatalogURL, primary.ModelPrefix
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err
@@ -163,18 +224,137 @@ func Load(yamlBytes []byte) (Config, error) {
 
 // PublicID returns the client-facing model ID (FR-003).
 func PublicID(c Config, upstreamID string) string {
-	if c.ModelPrefix.Enabled {
-		return c.ModelPrefix.Value + "/" + upstreamID
+	if plan, ok := c.primaryPlan(); ok {
+		return PublicIDFor(plan, upstreamID)
 	}
 	return upstreamID
 }
 
-func (c Config) validate() error {
-	if err := validateURL("base-url", c.BaseURL, c.AllowHTTP); err != nil {
-		return err
+// PublicIDFor returns the client-facing model ID a plan publishes.
+func PublicIDFor(plan Plan, upstreamID string) string {
+	if plan.ModelPrefix.Enabled {
+		return plan.ModelPrefix.Value + "/" + upstreamID
 	}
-	if err := validateURL("catalog-url", c.CatalogURL, c.AllowHTTP); err != nil {
-		return err
+	return upstreamID
+}
+
+// EffectivePlans returns the plans a directly constructed Config serves: the
+// declared plans, or one implicit plan built from the legacy single
+// base-url/model-prefix/catalog-url fields. Tests and embedders build Config
+// structs by hand; they keep working without declaring plans.
+func (c Config) EffectivePlans() []Plan {
+	if len(c.Plans) > 0 {
+		return c.Plans
+	}
+	return []Plan{{
+		Name:        "go",
+		BaseURL:     c.BaseURL,
+		CatalogURL:  c.CatalogURL,
+		ModelPrefix: c.ModelPrefix,
+		Enabled:     true,
+	}}
+}
+
+// primaryPlan is the first enabled plan, else the first declared plan.
+func (c Config) primaryPlan() (Plan, bool) {
+	plans := c.EffectivePlans()
+	for _, p := range plans {
+		if p.Enabled {
+			return p, true
+		}
+	}
+	if len(plans) > 0 {
+		return plans[0], true
+	}
+	return Plan{}, false
+}
+
+// DefaultPlan returns the plan a credential without an explicit plan
+// attribute reports quota against: the first enabled plan.
+func (c Config) DefaultPlan() (Plan, bool) {
+	for _, p := range c.EffectivePlans() {
+		if p.Enabled {
+			return p, true
+		}
+	}
+	return Plan{}, false
+}
+
+// PlanByName resolves a configured plan by name, enabled or not.
+func (c Config) PlanByName(name string) (Plan, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Plan{}, false
+	}
+	for _, p := range c.EffectivePlans() {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return Plan{}, false
+}
+
+// EnabledPlans returns the plans that may serve traffic and catalogs, in
+// declaration order.
+func (c Config) EnabledPlans() []Plan {
+	plans := c.EffectivePlans()
+	out := make([]Plan, 0, len(plans))
+	for _, p := range plans {
+		if p.Enabled {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (c Config) validate() error {
+	plans := c.EffectivePlans()
+	if len(plans) == 0 {
+		return fmt.Errorf("plans: at least one plan is required")
+	}
+	enabled := 0
+	prefixOwner := make(map[string]string, len(plans))
+	unprefixed := 0
+	names := make(map[string]bool, len(plans))
+	for i, p := range plans {
+		label := fmt.Sprintf("plans[%d]", i)
+		if p.Name == "" {
+			return fmt.Errorf("%s.name: must not be empty", label)
+		}
+		if !validPrefix(p.Name) {
+			return fmt.Errorf("%s.name: invalid plan-name characters %q", label, p.Name)
+		}
+		if names[p.Name] {
+			return fmt.Errorf("plans: duplicate plan name %q", p.Name)
+		}
+		names[p.Name] = true
+		if err := validateURL(label+".base-url", p.BaseURL, c.AllowHTTP); err != nil {
+			return err
+		}
+		if err := validateURL(label+".catalog-url", p.CatalogURL, c.AllowHTTP); err != nil {
+			return err
+		}
+		if !p.Enabled {
+			continue
+		}
+		enabled++
+		if !p.ModelPrefix.Enabled {
+			unprefixed++
+			continue
+		}
+		if !validPrefix(p.ModelPrefix.Value) {
+			return fmt.Errorf("%s.model-prefix.value: invalid provider-ID characters %q", label, p.ModelPrefix.Value)
+		}
+		if owner, ok := prefixOwner[p.ModelPrefix.Value]; ok {
+			return fmt.Errorf("plans: plans %q and %q share model-prefix.value %q", owner, p.Name, p.ModelPrefix.Value)
+		}
+		prefixOwner[p.ModelPrefix.Value] = p.Name
+	}
+	if enabled == 0 {
+		return fmt.Errorf("plans: at least one enabled plan is required")
+	}
+	if unprefixed > 1 {
+		return fmt.Errorf("plans: at most one enabled plan may disable model-prefix (public model IDs would collide)")
 	}
 	if len(c.APIKeys) == 0 {
 		return fmt.Errorf("api-keys: at least one key is required")
@@ -207,9 +387,6 @@ func (c Config) validate() error {
 		if !strings.HasPrefix(o.Endpoint, "/") {
 			return fmt.Errorf("route-overrides[%s].endpoint: must start with /", name)
 		}
-	}
-	if c.ModelPrefix.Enabled && !validPrefix(c.ModelPrefix.Value) {
-		return fmt.Errorf("model-prefix.value: invalid provider-ID characters %q", c.ModelPrefix.Value)
 	}
 	return nil
 }

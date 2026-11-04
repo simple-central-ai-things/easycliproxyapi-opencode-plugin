@@ -1,0 +1,7 @@
+# Build outputs (never commit binary artifacts; CI publishes release zips)
+plugins/
+dist/
+*.so
+*.dll
+*.dylib
+*.h

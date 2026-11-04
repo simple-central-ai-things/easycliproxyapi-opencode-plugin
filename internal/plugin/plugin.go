@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 
 	"opencode-go-cliproxyapi/internal/catalog"
 	"opencode-go-cliproxyapi/internal/config"
@@ -20,14 +20,22 @@ import (
 const ProviderID = "opencode-go"
 
 // pluginName / pluginVersion are reported in registration metadata.
+// This is the re-derived EasyCLI v2.3.0 source: same runtime plugin id the
+// SCPM config contract pins (`plugins.configs.opencode-go-provider`), v8 SDK
+// and the `plans:` config schema the deployed binary uses. Version 2.3.0 is
+// kept in lockstep with registry.json and the deployed artifact.
 const (
 	pluginName    = "opencode-go-provider"
-	pluginVersion = "1.0.3"
+	pluginVersion = "2.3.0"
 )
 
 // githubRepoURL satisfies the host's validPlugin gate (host.go
-// validPlugin rejects empty Metadata.GitHubRepository).
-const githubRepoURL = "https://github.com/xspeed1989/opencode-go-cliproxyapi"
+// validPlugin rejects empty Metadata.GitHubRepository) and is the address a
+// plugin store polls for updates, so it must be the repository this build is
+// published from. Provenance: derived from
+// https://github.com/xspeed1989/opencode-go-cliproxyapi (v1.0.3, MIT),
+// which in turn descends from https://github.com/massiveits/opencode-go-cliproxyapi.
+const githubRepoURL = "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin"
 
 // registerRefreshTimeout bounds ONLY the synchronous initial/reconfigure
 // refreshOnce so a slow catalog cannot block host startup/reconfigure for a
@@ -75,8 +83,10 @@ func (m *Manager) HandleCall(method string, request []byte) (resp []byte, err er
 	switch method {
 	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
 		return m.handleLifecycle(request)
-	case pluginabi.MethodModelStatic, pluginabi.MethodModelForAuth:
+	case pluginabi.MethodModelStatic:
 		return m.handleModels()
+	case pluginabi.MethodModelForAuth:
+		return m.handleModelsForAuth(request)
 	case pluginabi.MethodPluginShutdown:
 		return m.handleShutdown()
 	case pluginabi.MethodExecutorExecute:
@@ -122,10 +132,29 @@ func (m *Manager) HandleCall(method string, request []byte) (resp []byte, err er
 			return ErrEnvelope("auth_failure", err.Error()), nil
 		}
 		return okEnvelope(resp), nil
-	case pluginabi.MethodManagementRegister:
-		return m.registerManagement(request)
-	case pluginabi.MethodManagementHandle:
-		return m.handleManagement(request)
+	case pluginabi.MethodQuotaIdentifier:
+		return okEnvelope(map[string]string{"identifier": ProviderID}), nil
+	case pluginabi.MethodQuotaDescribe:
+		// DescribeQuota is static metadata; it cannot fail.
+		describe, _ := (quotaProvider{manager: m}).DescribeQuota(context.Background(), pluginapi.QuotaDescribeRequest{})
+		return okEnvelope(describe), nil
+	case pluginabi.MethodQuotaFetch:
+		var req struct{ pluginapi.QuotaFetchRequest }
+		if json.Unmarshal(request, &req) != nil {
+			return ErrEnvelope("invalid_request", "malformed quota fetch request body"), nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), quotaMaxTimeout)
+		defer cancel()
+		resp, err := (quotaProvider{manager: m}).FetchQuota(ctx, req.QuotaFetchRequest)
+		if err != nil {
+			return ErrEnvelope("quota_failure", err.Error()), nil
+		}
+		return okEnvelope(resp), nil
+	case pluginabi.MethodQuotaReset:
+		return classEnvelope(&errclass.Error{
+			Class:   errclass.ClassUnsupported,
+			Message: "quota.reset is not supported by opencode-go",
+		}), nil
 	case pluginabi.MethodExecutorIdentifier:
 		return okEnvelope(map[string]string{"identifier": ProviderID}), nil
 	case pluginabi.MethodExecutorCountTokens:
@@ -157,7 +186,7 @@ type capabilities struct {
 	ExecutorModelScope    pluginapi.ExecutorModelScope `json:"executor_model_scope,omitempty"`
 	ExecutorInputFormats  []string                     `json:"executor_input_formats,omitempty"`
 	ExecutorOutputFormats []string                     `json:"executor_output_formats,omitempty"`
-	ManagementAPI         bool                         `json:"management_api"`
+	QuotaProvider         bool                         `json:"quota_provider"`
 }
 
 type registrationResult struct {
@@ -171,22 +200,27 @@ func pluginConfigFields() []pluginapi.ConfigField {
 		{
 			Name:        "api-keys",
 			Type:        pluginapi.ConfigFieldTypeArray,
-			Description: "List of OpenCode Go API keys (`- value: ...`). Supports ${ENV_VAR} expansion.",
+			Description: "List of OpenCode Go API keys (`- value: ...`), shared by every plan. Supports ${ENV_VAR} expansion.",
+		},
+		{
+			Name:        "plans",
+			Type:        pluginapi.ConfigFieldTypeArray,
+			Description: "Named upstream plans (`- name: go`, `base-url`, `model-prefix: {enabled, value}`, `enabled`). Each enabled plan publishes its own model prefix, e.g. `opencode-go` and `opencode-zen`.",
 		},
 		{
 			Name:        "base-url",
 			Type:        pluginapi.ConfigFieldTypeString,
-			Description: "Upstream base URL (default: https://opencode.ai/zen/go/v1).",
+			Description: "Legacy single-plan upstream base URL; also the default for a plan that omits `base-url` (default: https://opencode.ai/zen/go/v1).",
 		},
 		{
 			Name:        "catalog-url",
 			Type:        pluginapi.ConfigFieldTypeString,
-			Description: "Optional catalog discovery URL (default: {base-url}/models).",
+			Description: "Optional catalog discovery URL (default: {base-url}/models); also the default for a plan that omits `catalog-url`.",
 		},
 		{
 			Name:        "model-prefix",
 			Type:        pluginapi.ConfigFieldTypeObject,
-			Description: "Client-facing model ID prefix configuration (`enabled: bool`, `value: string`).",
+			Description: "Legacy single-plan client-facing model ID prefix (`enabled: bool`, `value: string`).",
 		},
 		{
 			Name:        "catalog",
@@ -239,56 +273,11 @@ func registrationEnvelope() []byte {
 			ExecutorModelScope:    pluginapi.ExecutorModelScopeOAuth,
 			ExecutorInputFormats:  formats,
 			ExecutorOutputFormats: formats,
-			ManagementAPI:         true,
+			// Quota renders on the host's native credential cards (v8
+			// QuotaProvider). The plugin ships no management page/resource.
+			QuotaProvider: true,
 		},
 	})
-}
-
-func (m *Manager) registerManagement(request []byte) ([]byte, error) {
-	var req struct {
-		Plugin           pluginapi.Metadata `json:"Plugin"`
-		BasePath         string             `json:"BasePath"`
-		ResourceBasePath string             `json:"ResourceBasePath"`
-	}
-	if err := json.Unmarshal(request, &req); err != nil {
-		return ErrEnvelope("invalid_request", "malformed management registration request body"), nil
-	}
-	return okEnvelope(struct {
-		Routes []struct {
-			Method string `json:"method"`
-			Path   string `json:"path"`
-		} `json:"routes"`
-		Resources []struct {
-			Path        string `json:"path"`
-			Menu        string `json:"menu"`
-			Description string `json:"description"`
-		} `json:"resources"`
-	}{
-		Routes: []struct {
-			Method string `json:"method"`
-			Path   string `json:"path"`
-		}{{Method: "POST", Path: "/plugins/" + pluginName + "/quota-usage"}},
-		Resources: []struct {
-			Path        string `json:"path"`
-			Menu        string `json:"menu"`
-			Description string `json:"description"`
-		}{{Path: "/quota", Menu: "OpenCode Go Quota", Description: "View OpenCode Go quota windows."}},
-	}), nil
-}
-
-func (m *Manager) handleManagement(request []byte) ([]byte, error) {
-	var req struct {
-		pluginapi.ManagementRequest
-		HostCallbackID string `json:"host_callback_id,omitempty"`
-	}
-	if err := json.Unmarshal(request, &req); err != nil {
-		return ErrEnvelope("invalid_request", "malformed management request body"), nil
-	}
-	resp, err := m.HandleManagement(context.Background(), req.ManagementRequest)
-	if err != nil {
-		return ErrEnvelope("management_failure", err.Error()), nil
-	}
-	return okEnvelope(resp), nil
 }
 
 // handleLifecycle implements plugin.register / plugin.reconfigure: load
@@ -306,7 +295,7 @@ func (m *Manager) handleLifecycle(request []byte) ([]byte, error) {
 	}
 	m.lifeMu.Lock()
 	defer m.lifeMu.Unlock()
-	debugTrace("lifecycle config_loaded key_count=%d prefix_enabled=%t prefix=%s", len(cfg.APIKeys), cfg.ModelPrefix.Enabled, cfg.ModelPrefix.Value)
+	debugTrace("lifecycle config_loaded key_count=%d plan_count=%d prefix_enabled=%t prefix=%s", len(cfg.APIKeys), len(cfg.EnabledPlans()), cfg.ModelPrefix.Enabled, cfg.ModelPrefix.Value)
 	ctx, cancel := context.WithTimeout(context.Background(), registerRefreshTimeout)
 	defer cancel()
 	// Credential housekeeping is best-effort by design: a failed registration
@@ -357,6 +346,26 @@ func (m *Manager) handleLifecycle(request []byte) ([]byte, error) {
 
 	m.startRefreshLoop(cfg, mgr, interval, stop, done)
 	return registrationEnvelope(), nil
+}
+
+// handleModelsForAuth implements model.for_auth (v8): the host asks which
+// models a credential can serve. When the snapshot is still empty, the first
+// configured key drives one bounded catalog refresh so a fresh install can
+// publish models before the first tick.
+func (m *Manager) handleModelsForAuth(request []byte) ([]byte, error) {
+	var req pluginapi.AuthModelRequest
+	if json.Unmarshal(request, &req) != nil {
+		return ErrEnvelope("invalid_request", "malformed model request"), nil
+	}
+	m.mu.RLock()
+	mgr, cfg := m.mgr, m.cfg
+	m.mu.RUnlock()
+	if mgr != nil && len(mgr.Models()) == 0 && req.AuthProvider == ProviderID && len(cfg.APIKeys) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), registerRefreshTimeout)
+		defer cancel()
+		_ = mgr.Refresh(ctx, cfg.APIKeys[0].Value)
+	}
+	return m.handleModels()
 }
 
 // handleModels implements model.static / model.for_auth (FR-003): the last

@@ -10,11 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 
 	"opencode-go-cliproxyapi/internal/config"
-	"opencode-go-cliproxyapi/resources"
 )
+
+// quotaMaxTimeout bounds one quota-card refresh. It is independent of the
+// catalog/completion request-timeout: a card refresh is an operator-driven
+// read, so it must not inherit a long upstream completion budget.
+const quotaMaxTimeout = 20 * time.Second
 
 type quotaWindow struct {
 	Status   string `json:"status"`
@@ -26,16 +30,6 @@ type quotaUsage struct {
 	Rolling quotaWindow `json:"rolling"`
 	Weekly  quotaWindow `json:"weekly"`
 	Monthly quotaWindow `json:"monthly"`
-}
-
-type quotaCard struct {
-	KeyID string      `json:"key_id"`
-	Label string      `json:"label"`
-	Usage *quotaUsage `json:"usage,omitempty"`
-}
-
-type quotaRequest struct {
-	KeyID string `json:"key_id"`
 }
 
 type usageResponse struct {
@@ -55,63 +49,110 @@ type quotaUpstreamWindow struct {
 func quotaIdentity(key string) (id, label string) {
 	digest := sha256.Sum256([]byte(key))
 	hash := hex.EncodeToString(digest[:])
-	return "opencode-go-key-" + hash, "OpenCode Go credential " + hash[:12]
+	return managedAuthPrefix + hash, "OpenCode Go credential " + hash[:12]
 }
 
-func (m *Manager) HandleManagement(ctx context.Context, req pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	if req.Method == http.MethodGet && req.Path == "/v0/resource/plugins/"+pluginName+"/quota" {
-		return pluginapi.ManagementResponse{Headers: http.Header{"Content-Type": []string{"text/html; charset=utf-8"}}, Body: []byte(resources.QuotaPage)}, nil
+// quotaProvider implements the host's native quota card surface (v8 SDK
+// QuotaProvider). The deployed v2.3.0 plugin has no plugin-owned management
+// page: quota renders on the host's credential cards exactly like the
+// easycliproxyapi-commandcode-provider sibling.
+type quotaProvider struct{ manager *Manager }
+
+var _ pluginapi.QuotaProvider = quotaProvider{}
+
+func (quotaProvider) Identifier() string { return ProviderID }
+
+func (quotaProvider) DescribeQuota(context.Context, pluginapi.QuotaDescribeRequest) (pluginapi.QuotaDescribeResponse, error) {
+	return pluginapi.QuotaDescribeResponse{
+		SupportedProviders: []string{ProviderID},
+		DisplayName:        "OpenCode Go",
+		SupportsReset:      false,
+	}, nil
+}
+
+func (p quotaProvider) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchRequest) (pluginapi.QuotaFetchResponse, error) {
+	if req.Provider != "" && req.Provider != ProviderID {
+		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota provider handles %q credentials only", ProviderID)
 	}
-	if req.Method != http.MethodPost || req.Path != "/v0/management/plugins/"+pluginName+"/quota-usage" {
-		return pluginapi.ManagementResponse{StatusCode: http.StatusNotFound, Body: []byte(`{"error":"not found"}`)}, nil
+	key := strings.TrimSpace(req.Attributes["api_key"])
+	if key == "" {
+		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("credential %q has no opencode-go api key", req.AuthID)
 	}
-	var body quotaRequest
-	if len(req.Body) > 0 {
-		if err := json.Unmarshal(req.Body, &body); err != nil {
-			return pluginapi.ManagementResponse{StatusCode: http.StatusBadRequest, Body: []byte(`{"error":"invalid request"}`)}, nil
-		}
-	}
+	m := p.manager
 	m.mu.RLock()
-	baseURL, timeout := m.cfg.BaseURL, m.cfg.RequestTimeout
-	keys := append([]config.APIKey(nil), m.cfg.APIKeys...)
+	cfg := m.cfg
 	m.mu.RUnlock()
-	if body.KeyID == "" {
-		cards := make([]quotaCard, 0, len(keys))
-		for _, key := range keys {
-			id, label := quotaIdentity(key.Value)
-			cards = append(cards, quotaCard{KeyID: id, Label: label})
-		}
-		return quotaJSON(quotaList{Cards: cards})
+	plan, ok := quotaPlan(cfg, req.Attributes)
+	if !ok {
+		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("no enabled opencode-go plan is configured")
 	}
-	for _, key := range keys {
-		id, label := quotaIdentity(key.Value)
-		if id != body.KeyID {
-			continue
-		}
-		usage, err := fetchQuota(ctx, m.bridge, baseURL, timeout, key.Value)
-		if err != nil {
-			return pluginapi.ManagementResponse{StatusCode: http.StatusBadGateway, Body: []byte(`{"error":"quota refresh failed"}`)}, nil
-		}
-		return quotaJSON(quotaCard{KeyID: id, Label: label, Usage: &usage})
-	}
-	return pluginapi.ManagementResponse{StatusCode: http.StatusNotFound, Body: []byte(`{"error":"unknown quota key"}`)}, nil
-}
-
-type quotaList struct {
-	Cards []quotaCard `json:"cards"`
-}
-
-func quotaJSON(v any) (pluginapi.ManagementResponse, error) {
-	body, err := json.Marshal(v)
+	usage, err := fetchQuota(ctx, m.bridge, plan.BaseURL, cfg.RequestTimeout, key)
 	if err != nil {
-		return pluginapi.ManagementResponse{}, fmt.Errorf("quota response encoding failed")
+		return pluginapi.QuotaFetchResponse{}, err
 	}
-	return pluginapi.ManagementResponse{Headers: http.Header{"Content-Type": []string{"application/json"}}, Body: body}, nil
+	return quotaFetchResponseFromUsage(plan.Name, usage), nil
+}
+
+func (quotaProvider) ResetQuota(context.Context, pluginapi.QuotaResetRequest) (pluginapi.QuotaResetResponse, error) {
+	return pluginapi.QuotaResetResponse{}, fmt.Errorf("opencode-go credentials do not support quota reset")
+}
+
+// quotaPlan resolves which plan a credential reports against. A credential
+// carries no plan of its own (one key pool serves every plan), so an explicit
+// `plan` attribute wins and otherwise the first enabled plan is used.
+func quotaPlan(cfg config.Config, attributes map[string]string) (config.Plan, bool) {
+	if name := strings.TrimSpace(attributes["plan"]); name != "" {
+		if plan, ok := cfg.PlanByName(name); ok && plan.Enabled {
+			return plan, true
+		}
+		return config.Plan{}, false
+	}
+	return cfg.DefaultPlan()
+}
+
+// quotaFetchResponseFromUsage maps one account snapshot to the host's
+// normalized quota shape: a subscription label, a plan summary metric and one
+// bucket per rate-limit window. RemainingFraction is the fraction still
+// available so a bar always reads as "left", never as "used".
+func quotaFetchResponseFromUsage(planName string, usage quotaUsage) pluginapi.QuotaFetchResponse {
+	out := pluginapi.QuotaFetchResponse{
+		Subscription: &pluginapi.QuotaSubscription{Plan: planName, TierName: planName},
+	}
+	if usage.Monthly.Status != "" || usage.Monthly.Percent > 0 {
+		out.Summary = []pluginapi.QuotaMetric{{
+			Key:    "monthly_remaining",
+			Label:  "Monthly quota remaining",
+			Value:  float64(100 - usage.Monthly.Percent),
+			Unit:   "percent",
+			Format: "0",
+		}}
+	}
+	out.Groups = []pluginapi.QuotaGroup{{
+		DisplayName: "Usage windows",
+		Buckets: []pluginapi.QuotaBucket{
+			quotaBucketFromWindow(usage.Rolling, "Rolling usage window"),
+			quotaBucketFromWindow(usage.Weekly, "Weekly usage window"),
+			quotaBucketFromWindow(usage.Monthly, "Monthly usage window"),
+		},
+	}}
+	return out
+}
+
+func quotaBucketFromWindow(w quotaWindow, description string) pluginapi.QuotaBucket {
+	return pluginapi.QuotaBucket{
+		Window:            w.Status,
+		RemainingFraction: float64(100-w.Percent) / 100,
+		ResetTime:         w.ResetsAt,
+		Description:       description,
+	}
 }
 
 func fetchQuota(ctx context.Context, bridge *HostBridge, baseURL string, timeout time.Duration, key string) (quotaUsage, error) {
 	if bridge == nil {
 		return quotaUsage{}, fmt.Errorf("quota bridge unavailable")
+	}
+	if timeout <= 0 || timeout > quotaMaxTimeout {
+		timeout = quotaMaxTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

@@ -336,3 +336,137 @@ func TestValidateURLRejectsQueryFragmentUserinfo(t *testing.T) {
 		})
 	}
 }
+
+// deployedPlansYAML mirrors the shape the EasyCLI deployment writes under
+// `plugins.configs.opencode-go-provider`: one key pool, two plans, the second
+// disabled until the account is funded. Values are synthetic.
+const deployedPlansYAML = `api-keys:
+  - value: ${OPENCODE_GO_API_KEY_1}
+plans:
+  - name: go
+    base-url: https://opencode.test/zen/go/v1
+    model-prefix:
+      enabled: true
+      value: opencode-go
+    enabled: true
+  - name: zen
+    base-url: https://opencode.test/zen/v1
+    model-prefix:
+      enabled: true
+      value: opencode-zen
+    enabled: false
+    note: pay-as-you-go; enable after funding
+catalog:
+  refresh-interval: 15m
+  stale-while-unavailable: true
+`
+
+func TestLoadPlanSchema(t *testing.T) {
+	t.Setenv("OPENCODE_GO_API_KEY_1", "sk-plan-test")
+	c, err := Load([]byte(deployedPlansYAML))
+	if err != nil {
+		t.Fatalf("Load(plans) failed: %v", err)
+	}
+	if len(c.Plans) != 2 {
+		t.Fatalf("plans = %+v", c.Plans)
+	}
+	goPlan, zenPlan := c.Plans[0], c.Plans[1]
+	if goPlan.Name != "go" || goPlan.BaseURL != "https://opencode.test/zen/go/v1" || goPlan.CatalogURL != "https://opencode.test/zen/go/v1/models" || !goPlan.Enabled {
+		t.Fatalf("go plan = %+v", goPlan)
+	}
+	if goPlan.ModelPrefix.Value != "opencode-go" || !goPlan.ModelPrefix.Enabled {
+		t.Fatalf("go prefix = %+v", goPlan.ModelPrefix)
+	}
+	if zenPlan.Name != "zen" || zenPlan.Enabled || zenPlan.ModelPrefix.Value != "opencode-zen" {
+		t.Fatalf("zen plan = %+v", zenPlan)
+	}
+	enabled := c.EnabledPlans()
+	if len(enabled) != 1 || enabled[0].Name != "go" {
+		t.Fatalf("enabled plans = %+v", enabled)
+	}
+	// The compatibility view points at the first enabled plan.
+	if c.BaseURL != goPlan.BaseURL || c.ModelPrefix.Value != "opencode-go" {
+		t.Fatalf("primary view = %q %+v", c.BaseURL, c.ModelPrefix)
+	}
+	if plan, ok := c.PlanByName("zen"); !ok || plan.Enabled {
+		t.Fatalf("PlanByName(zen) = %+v ok=%t", plan, ok)
+	}
+	if plan, ok := c.DefaultPlan(); !ok || plan.Name != "go" {
+		t.Fatalf("DefaultPlan = %+v ok=%t", plan, ok)
+	}
+	if got := PublicIDFor(goPlan, "glm-5.3"); got != "opencode-go/glm-5.3" {
+		t.Fatalf("public id = %q", got)
+	}
+	if got := PublicIDFor(zenPlan, "glm-5.3"); got != "opencode-zen/glm-5.3" {
+		t.Fatalf("public id = %q", got)
+	}
+}
+
+func TestLoadPlanSchemaRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name:    "duplicate plan name",
+			yaml:    withKey + "plans:\n  - name: go\n    base-url: https://a.test/v1\n  - name: go\n    base-url: https://b.test/v1\n",
+			wantErr: `duplicate plan name "go"`,
+		},
+		{
+			name:    "missing plan name",
+			yaml:    withKey + "plans:\n  - base-url: https://a.test/v1\n",
+			wantErr: "name: must not be empty",
+		},
+		{
+			name:    "all plans disabled",
+			yaml:    withKey + "plans:\n  - name: go\n    base-url: https://a.test/v1\n    enabled: false\n",
+			wantErr: "at least one enabled plan is required",
+		},
+		{
+			name:    "shared prefix across plans",
+			yaml:    withKey + "plans:\n  - name: go\n    base-url: https://a.test/v1\n    model-prefix:\n      value: opencode-go\n  - name: zen\n    base-url: https://b.test/v1\n    model-prefix:\n      value: opencode-go\n",
+			wantErr: `share model-prefix.value "opencode-go"`,
+		},
+		{
+			name:    "two unprefixed plans",
+			yaml:    withKey + "plans:\n  - name: go\n    base-url: https://a.test/v1\n    model-prefix:\n      enabled: false\n  - name: zen\n    base-url: https://b.test/v1\n    model-prefix:\n      enabled: false\n",
+			wantErr: "at most one enabled plan may disable model-prefix",
+		},
+		{
+			name:    "plan without base-url falls back to default and still validates",
+			yaml:    withKey + "plans:\n  - name: go\n    base-url: ftp://a.test/v1\n",
+			wantErr: "unsupported scheme",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load([]byte(tt.yaml))
+			requireErrContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestLoadLegacySinglePlanIsImplicitGoPlan(t *testing.T) {
+	c, err := Load([]byte(withKey + "base-url: https://legacy.test/v1\n"))
+	if err != nil {
+		t.Fatalf("Load(legacy) failed: %v", err)
+	}
+	if len(c.Plans) != 1 || c.Plans[0].Name != "go" || !c.Plans[0].Enabled {
+		t.Fatalf("implicit plans = %+v", c.Plans)
+	}
+	if c.Plans[0].BaseURL != "https://legacy.test/v1" || c.Plans[0].CatalogURL != "https://legacy.test/v1/models" {
+		t.Fatalf("implicit plan = %+v", c.Plans[0])
+	}
+}
+
+func TestEffectivePlansForHandBuiltConfig(t *testing.T) {
+	c := Config{BaseURL: "https://hand.test/v1", CatalogURL: "https://hand.test/v1/models", ModelPrefix: ModelPrefix{Enabled: true, Value: "opencode-go"}}
+	plans := c.EffectivePlans()
+	if len(plans) != 1 || plans[0].Name != "go" || !plans[0].Enabled || plans[0].BaseURL != "https://hand.test/v1" {
+		t.Fatalf("effective plans = %+v", plans)
+	}
+	if got := PublicID(c, "glm-5.3"); got != "opencode-go/glm-5.3" {
+		t.Fatalf("PublicID = %q", got)
+	}
+}

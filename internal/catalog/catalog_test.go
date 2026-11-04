@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 
 	"opencode-go-cliproxyapi/internal/config"
 )
@@ -1084,7 +1084,7 @@ func TestRefreshDataKeyAbsentVsEmpty(t *testing.T) {
 	m := newManager(testCfg(), fc)
 	mustRefresh(t, m)
 
-	const driftWarn = `upstream catalog response missing "data" field`
+	const driftWarn = `plan "go": upstream catalog response missing "data" field`
 
 	// Key absent: cleared snapshot plus shape-drift warning.
 	fc.set(pluginapi.HTTPResponse{
@@ -1169,5 +1169,142 @@ func TestReasoningMapAndDeclarationMerge(t *testing.T) {
 	}
 	if rec.Thinking.Min != 1024 || rec.Thinking.Max != 32768 {
 		t.Fatalf("bounds lost: min=%d max=%d", rec.Thinking.Min, rec.Thinking.Max)
+	}
+}
+
+// routedClient answers per request URL so a multi-plan refresh can be tested
+// without a live upstream.
+type routedClient struct {
+	mu    sync.Mutex
+	byURL map[string]pluginapi.HTTPResponse
+	errs  map[string]error
+	calls []string
+}
+
+func (r *routedClient) Do(_ context.Context, req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, req.URL)
+	if err, ok := r.errs[req.URL]; ok {
+		return pluginapi.HTTPResponse{}, err
+	}
+	return r.byURL[req.URL], nil
+}
+
+func (r *routedClient) callURLs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.calls...)
+}
+
+func planCfg(plans ...config.Plan) config.Config {
+	return config.Config{
+		Plans:            plans,
+		MaxResponseBytes: 1 << 20,
+		Catalog:          config.Catalog{StaleWhileUnavailable: true},
+		Protocols:        config.Protocols{ChatCompletions: true, Messages: true, Responses: true},
+	}
+}
+
+func TestRefreshPublishesPerPlanPrefixesAndSkipsDisabledPlans(t *testing.T) {
+	goURL := "https://go.test/v1/models"
+	zenURL := "https://zen.test/v1/models"
+	rc := &routedClient{byURL: map[string]pluginapi.HTTPResponse{
+		goURL:  {StatusCode: 200, Body: []byte(`{"data":[{"id":"glm-5.3"},{"id":"minimax-m3"}]}`)},
+		zenURL: {StatusCode: 200, Body: []byte(`{"data":[{"id":"qwen3.7-max"}]}`)},
+	}}
+	cfg := planCfg(
+		config.Plan{Name: "go", BaseURL: "https://go.test/v1", CatalogURL: goURL, ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-go"}, Enabled: true},
+		config.Plan{Name: "zen", BaseURL: "https://zen.test/v1", CatalogURL: zenURL, ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-zen"}, Enabled: true},
+		config.Plan{Name: "off", BaseURL: "https://off.test/v1", CatalogURL: "https://off.test/v1/models", ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-off"}, Enabled: false},
+	)
+	m := New(cfg, rc)
+	if err := m.Refresh(context.Background(), testKey); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	urls := rc.callURLs()
+	if len(urls) != 2 {
+		t.Fatalf("calls = %v, want one per enabled plan", urls)
+	}
+	for _, u := range urls {
+		if u == "https://off.test/v1/models" {
+			t.Fatalf("disabled plan was fetched: %v", urls)
+		}
+	}
+	goRec, ok := m.Lookup("opencode-go/glm-5.3")
+	if !ok || goRec.UpstreamID != "glm-5.3" || goRec.PlanName != "go" || goRec.BaseURL != "https://go.test/v1" {
+		t.Fatalf("go record = %+v ok=%t", goRec, ok)
+	}
+	zenRec, ok := m.Lookup("opencode-zen/qwen3.7-max")
+	if !ok || zenRec.UpstreamID != "qwen3.7-max" || zenRec.PlanName != "zen" || zenRec.BaseURL != "https://zen.test/v1" {
+		t.Fatalf("zen record = %+v ok=%t", zenRec, ok)
+	}
+	// Bare upstream IDs still resolve (host may send a panel-chosen ID).
+	if _, ok := m.Lookup("glm-5.3"); !ok {
+		t.Fatal("bare upstream id did not resolve")
+	}
+	if got := len(m.Models()); got != 3 {
+		t.Fatalf("model count = %d, want 3", got)
+	}
+}
+
+func TestRefreshKeepsLastGoodEntriesForOneFailedPlan(t *testing.T) {
+	goURL := "https://go.test/v1/models"
+	zenURL := "https://zen.test/v1/models"
+	rc := &routedClient{
+		byURL: map[string]pluginapi.HTTPResponse{
+			goURL:  {StatusCode: 200, Body: []byte(`{"data":[{"id":"glm-5.3"}]}`)},
+			zenURL: {StatusCode: 200, Body: []byte(`{"data":[{"id":"qwen3.7-max"}]}`)},
+		},
+		errs: map[string]error{},
+	}
+	cfg := planCfg(
+		config.Plan{Name: "go", BaseURL: "https://go.test/v1", CatalogURL: goURL, ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-go"}, Enabled: true},
+		config.Plan{Name: "zen", BaseURL: "https://zen.test/v1", CatalogURL: zenURL, ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-zen"}, Enabled: true},
+	)
+	m := New(cfg, rc)
+	if err := m.Refresh(context.Background(), testKey); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+	// zen goes down; go keeps answering with a new model. The zen snapshot
+	// must survive (stale-while-unavailable) instead of dropping its models.
+	rc.mu.Lock()
+	rc.errs[zenURL] = errors.New("upstream down")
+	rc.byURL[goURL] = pluginapi.HTTPResponse{StatusCode: 200, Body: []byte(`{"data":[{"id":"glm-5.3"},{"id":"grok-5"}]}`)}
+	rc.mu.Unlock()
+	if err := m.Refresh(context.Background(), testKey); err != nil {
+		t.Fatalf("partial refresh must not fail the whole snapshot: %v", err)
+	}
+	if _, ok := m.Lookup("opencode-zen/qwen3.7-max"); !ok {
+		t.Fatal("stale zen entry was dropped by a partial failure")
+	}
+	if _, ok := m.Lookup("opencode-go/grok-5"); !ok {
+		t.Fatal("new go entry was not published")
+	}
+}
+
+func TestRefreshAllPlansFailAppliesStalePolicy(t *testing.T) {
+	goURL := "https://go.test/v1/models"
+	rc := &routedClient{byURL: map[string]pluginapi.HTTPResponse{goURL: {StatusCode: 200, Body: []byte(`{"data":[{"id":"glm-5.3"}]}`)}}, errs: map[string]error{}}
+	cfg := planCfg(config.Plan{Name: "go", BaseURL: "https://go.test/v1", CatalogURL: goURL, ModelPrefix: config.ModelPrefix{Enabled: true, Value: "opencode-go"}, Enabled: true})
+	m := New(cfg, rc)
+	if err := m.Refresh(context.Background(), testKey); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+	rc.mu.Lock()
+	rc.errs[goURL] = errors.New("upstream down")
+	rc.mu.Unlock()
+	err := m.Refresh(context.Background(), testKey)
+	if err == nil || !strings.Contains(err.Error(), "network error") {
+		t.Fatalf("all-plan failure = %v, want classified network error", err)
+	}
+	if _, ok := m.Lookup("opencode-go/glm-5.3"); !ok {
+		t.Fatal("stale-while-unavailable dropped the last good snapshot")
+	}
+	cfg.Catalog.StaleWhileUnavailable = false
+	m = New(cfg, rc)
+	_ = m.Refresh(context.Background(), testKey)
+	if _, ok := m.Lookup("opencode-go/glm-5.3"); ok {
+		t.Fatal("fail-closed kept a snapshot")
 	}
 }
