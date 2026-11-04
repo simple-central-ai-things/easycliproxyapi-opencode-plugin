@@ -22,4 +22,4 @@ jobs:
       # glibc host build: the CLIProxyAPI container image is Debian-based,
       # so the .so must be built for glibc (musl fails to dlopen there).
       - name: c-shared build (linux/amd64, glibc host)
-        run: CGO_ENABLED=1 go build -buildmode=c-shared -o plugins/linux/amd64/opencode-go-provider.so .
+        run: CGO_ENABLED=1 go build -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .

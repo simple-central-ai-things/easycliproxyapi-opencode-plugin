@@ -11,7 +11,11 @@ permissions:
   contents: write
 
 env:
+  # Runtime plugin id (registration metadata + config key contract).
   PLUGIN_ID: opencode-go-provider
+  # Deployed v2.3.0 shared-library filename (the host loads the file, then
+  # registers the plugin id above).
+  LIB_BASE: easycliproxyapi-opencode-provider
 
 jobs:
   test:
@@ -83,7 +87,7 @@ jobs:
             VERSION="0.0.0-dev"
           fi
           echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
-          echo "LIB_NAME=${PLUGIN_ID}.${{ matrix.ext }}" >> "${GITHUB_ENV}"
+          echo "LIB_NAME=${LIB_BASE}.${{ matrix.ext }}" >> "${GITHUB_ENV}"
           echo "ARCHIVE_NAME=${PLUGIN_ID}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip" >> "${GITHUB_ENV}"
 
       - name: Build shared library
@@ -94,7 +98,7 @@ jobs:
             go build -trimpath -buildmode=c-shared \
               -ldflags "-s -w" \
               -o "dist/${LIB_NAME}" .
-          rm -f "dist/${PLUGIN_ID}.h"
+          rm -f "dist/${LIB_BASE}.h"
 
       - name: Package plugin
         run: |
@@ -153,15 +157,15 @@ jobs:
           packages: .
           targets: windows-arm64
           out-dir: dist/windows-arm64
-          output: ${{ env.PLUGIN_ID }}.dll
+          output: ${{ env.LIB_BASE }}.dll
           flags: -ldflags=-s -w
 
       - name: Package plugin
         run: |
           set -euo pipefail
-          rm -f go-cross-bin.h "dist/windows-arm64/${PLUGIN_ID}.h"
+          rm -f go-cross-bin.h "dist/windows-arm64/${LIB_BASE}.h"
           go run ./.github/scripts/package-release.go \
-            -library "dist/windows-arm64/${PLUGIN_ID}.dll" \
+            -library "dist/windows-arm64/${LIB_BASE}.dll" \
             -archive "${ARCHIVE_NAME}" \
             -checksum "${ARCHIVE_NAME}.sha256"
 
@@ -252,15 +256,15 @@ jobs:
           packages: .
           targets: freebsd-${{ matrix.goarch }}
           out-dir: dist/freebsd-${{ matrix.goarch }}
-          output: ${{ env.PLUGIN_ID }}.so
+          output: ${{ env.LIB_BASE }}.so
           flags: -ldflags=-s -w
 
       - name: Package plugin
         run: |
           set -euo pipefail
-          rm -f go-cross-bin.h "dist/freebsd-${{ matrix.goarch }}/${PLUGIN_ID}.h"
+          rm -f go-cross-bin.h "dist/freebsd-${{ matrix.goarch }}/${LIB_BASE}.h"
           go run ./.github/scripts/package-release.go \
-            -library "dist/freebsd-${{ matrix.goarch }}/${PLUGIN_ID}.so" \
+            -library "dist/freebsd-${{ matrix.goarch }}/${LIB_BASE}.so" \
             -archive "${ARCHIVE_NAME}" \
             -checksum "${ARCHIVE_NAME}.sha256"
 
