@@ -13,13 +13,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.7"
+      # glibc host build: the CLIProxyAPI container image is Debian-based,
+      # so the .so must be built for glibc (musl fails to dlopen there).
+      # Built BEFORE the test step so internal/loadsmoke dlopen()s the real
+      # artifact in CI (it skips, with a printed reason, when the .so is
+      # absent — the smoke never fails on a missing build environment).
+      - name: c-shared build (linux/amd64, glibc host)
+        run: CGO_ENABLED=1 go build -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .
       - name: go vet
         run: go vet ./...
       # The tests/live_*_test.go regression tests sit behind the `live`
       # build tag, so `go test ./...` runs offline and secret-free.
       - name: go test
         run: go test ./...
-      # glibc host build: the CLIProxyAPI container image is Debian-based,
-      # so the .so must be built for glibc (musl fails to dlopen there).
-      - name: c-shared build (linux/amd64, glibc host)
-        run: CGO_ENABLED=1 go build -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .
