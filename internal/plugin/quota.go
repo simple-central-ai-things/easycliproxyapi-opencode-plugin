@@ -74,7 +74,7 @@ func (p quotaProvider) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchR
 	if req.Provider != "" && req.Provider != ProviderID {
 		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("quota provider handles %q credentials only", ProviderID)
 	}
-	key := strings.TrimSpace(req.Attributes["api_key"])
+	key := quotaAuthKey(req.Attributes, req.Metadata)
 	if key == "" {
 		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("credential %q has no opencode-go api key", req.AuthID)
 	}
@@ -110,38 +110,85 @@ func quotaPlan(cfg config.Config, attributes map[string]string) (config.Plan, bo
 	return cfg.DefaultPlan()
 }
 
+// quotaAuthKey resolves a credential's API key exactly the way the sibling
+// easycliproxyapi-commandcode-provider plugin resolves it: the parsed
+// attribute when present, otherwise the host's mutable metadata. host.auth.save
+// exposes a freshly written credential through Metadata first and the
+// auth-directory watcher re-parses it into Attributes later; both carry the
+// SAME selected credential, so the quota card must read both or it blanks out
+// in the window between the save and the re-parse.
+func quotaAuthKey(attributes map[string]string, metadata map[string]any) string {
+	if key := strings.TrimSpace(attributes["api_key"]); key != "" {
+		return key
+	}
+	key, _ := metadata["api_key"].(string)
+	return strings.TrimSpace(key)
+}
+
 // quotaFetchResponseFromUsage maps one account snapshot to the host's
 // normalized quota shape: a subscription label, a plan summary metric and one
 // bucket per rate-limit window. RemainingFraction is the fraction still
-// available so a bar always reads as "left", never as "used".
+// available so a bar always reads as "left", never as "used". A window the
+// upstream did not report is omitted rather than drawn as a full bar, which
+// would claim capacity nobody measured.
 func quotaFetchResponseFromUsage(planName string, usage quotaUsage) pluginapi.QuotaFetchResponse {
 	out := pluginapi.QuotaFetchResponse{
 		Subscription: &pluginapi.QuotaSubscription{Plan: planName, TierName: planName},
 	}
-	if usage.Monthly.Status != "" || usage.Monthly.Percent > 0 {
+	if quotaWindowPresent(usage.Monthly) {
 		out.Summary = []pluginapi.QuotaMetric{{
 			Key:    "monthly_remaining",
 			Label:  "Monthly quota remaining",
-			Value:  float64(100 - usage.Monthly.Percent),
+			Value:  quotaRemainingPercent(usage.Monthly.Percent),
 			Unit:   "percent",
 			Format: "0",
 		}}
 	}
-	out.Groups = []pluginapi.QuotaGroup{{
-		DisplayName: "Usage windows",
-		Buckets: []pluginapi.QuotaBucket{
-			quotaBucketFromWindow(usage.Rolling, "Rolling usage window"),
-			quotaBucketFromWindow(usage.Weekly, "Weekly usage window"),
-			quotaBucketFromWindow(usage.Monthly, "Monthly usage window"),
-		},
-	}}
+	buckets := make([]pluginapi.QuotaBucket, 0, 3)
+	for _, w := range []struct {
+		window      quotaWindow
+		description string
+	}{
+		{usage.Rolling, "Rolling usage window"},
+		{usage.Weekly, "Weekly usage window"},
+		{usage.Monthly, "Monthly usage window"},
+	} {
+		if quotaWindowPresent(w.window) {
+			buckets = append(buckets, quotaBucketFromWindow(w.window, w.description))
+		}
+	}
+	if len(buckets) > 0 {
+		out.Groups = []pluginapi.QuotaGroup{{
+			DisplayName: "Usage windows",
+			Buckets:     buckets,
+		}}
+	}
 	return out
+}
+
+// quotaWindowPresent reports whether the upstream actually described a window.
+func quotaWindowPresent(w quotaWindow) bool {
+	return strings.TrimSpace(w.Status) != "" || w.Percent != 0
+}
+
+// quotaRemainingPercent is the fraction still available, in percent, clamped
+// to 0..100: an upstream that reports a percent outside its own bounds must
+// never produce a negative quota or a bar past its end.
+func quotaRemainingPercent(percent int) float64 {
+	switch {
+	case percent < 0:
+		return 100
+	case percent > 100:
+		return 0
+	default:
+		return float64(100 - percent)
+	}
 }
 
 func quotaBucketFromWindow(w quotaWindow, description string) pluginapi.QuotaBucket {
 	return pluginapi.QuotaBucket{
 		Window:            w.Status,
-		RemainingFraction: float64(100-w.Percent) / 100,
+		RemainingFraction: quotaRemainingPercent(w.Percent) / 100,
 		ResetTime:         w.ResetsAt,
 		Description:       description,
 	}

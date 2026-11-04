@@ -238,3 +238,97 @@ func TestQuotaPlanResolution(t *testing.T) {
 		t.Fatal("an unknown plan attribute must not fall back")
 	}
 }
+
+// TestQuotaFetchUsesMetadataKeyFallback pins the sibling-plugin parity rule:
+// host.auth.save exposes a freshly written credential through Metadata before
+// the auth-directory watcher re-parses it into Attributes, so a card refresh
+// in that window must still find the key.
+func TestQuotaFetchUsesMetadataKeyFallback(t *testing.T) {
+	const key = "quota-metadata-secret"
+	f := &fakeCaller{responder: func(method string, payload []byte) ([]byte, error) {
+		if method != pluginabi.MethodHostHTTPDo {
+			return hostOK(map[string]any{}), nil
+		}
+		var wire struct {
+			Headers http.Header `json:"headers"`
+		}
+		if err := json.Unmarshal(payload, &wire); err != nil || wire.Headers.Get("Authorization") != "Bearer "+key {
+			t.Fatalf("bad quota request: %s", payload)
+		}
+		return hostOK(pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"usage":{"monthly":{"status":"ok","percent":40}}}`)}), nil
+	}}
+	m := NewManager(NewHostBridge(f.call))
+	m.cfg = planConfig(key)
+	var card pluginapi.QuotaFetchResponse
+	decodeResult(t, mustHandle(t, m, pluginabi.MethodQuotaFetch, []byte(`{"auth_id":"opencode-go-key-test","provider":"opencode-go","metadata":{"api_key":"`+key+`"}}`)), &card)
+	if card.Subscription == nil || card.Subscription.Plan != "go" {
+		t.Fatalf("subscription = %+v", card.Subscription)
+	}
+	if len(card.Summary) != 1 || card.Summary[0].Value != 60 {
+		t.Fatalf("summary = %+v", card.Summary)
+	}
+}
+
+// TestQuotaRemainingFractionClampsToBarBounds ensures an upstream percent
+// outside 0..100 cannot draw a bar past its own ends or report negative quota.
+func TestQuotaRemainingFractionClampsToBarBounds(t *testing.T) {
+	for _, tc := range []struct {
+		percent int
+		want    float64
+	}{{-20, 1}, {0, 1}, {37, 0.63}, {100, 0}, {140, 0}} {
+		if got := quotaBucketFromWindow(quotaWindow{Status: "ok", Percent: tc.percent}, "window").RemainingFraction; got != tc.want {
+			t.Fatalf("percent %d -> fraction %v, want %v", tc.percent, got, tc.want)
+		}
+		if got := quotaRemainingPercent(tc.percent); got != tc.want*100 {
+			t.Fatalf("percent %d -> remaining %v, want %v", tc.percent, got, tc.want*100)
+		}
+	}
+}
+
+// TestQuotaFetchOmitsUnreportedWindows keeps the card honest: a window the
+// upstream never described is omitted instead of being drawn as a full bar.
+func TestQuotaFetchOmitsUnreportedWindows(t *testing.T) {
+	f := &fakeCaller{responder: func(method string, payload []byte) ([]byte, error) {
+		if method != pluginabi.MethodHostHTTPDo {
+			return hostOK(map[string]any{}), nil
+		}
+		return hostOK(pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"usage":{"weekly":{"status":"ok","percent":25}}}`)}), nil
+	}}
+	m := NewManager(NewHostBridge(f.call))
+	m.cfg = planConfig("quota-key")
+	var card pluginapi.QuotaFetchResponse
+	decodeResult(t, mustHandle(t, m, pluginabi.MethodQuotaFetch, []byte(`{"provider":"opencode-go","attributes":{"api_key":"quota-key"}}`)), &card)
+	if card.Subscription == nil || card.Subscription.Plan != "go" {
+		t.Fatalf("subscription = %+v", card.Subscription)
+	}
+	if len(card.Summary) != 0 {
+		t.Fatalf("summary = %+v, want none without a monthly window", card.Summary)
+	}
+	if len(card.Groups) != 1 || len(card.Groups[0].Buckets) != 1 {
+		t.Fatalf("groups = %+v, want only the reported window", card.Groups)
+	}
+	if bucket := card.Groups[0].Buckets[0]; bucket.RemainingFraction != 0.75 || bucket.Description != "Weekly usage window" {
+		t.Fatalf("weekly bucket = %+v", bucket)
+	}
+}
+
+// TestQuotaFetchWithNoWindowsOmitsGroups covers an upstream that answers but
+// reports nothing: the card keeps its plan label and claims no capacity.
+func TestQuotaFetchWithNoWindowsOmitsGroups(t *testing.T) {
+	f := &fakeCaller{responder: func(method string, payload []byte) ([]byte, error) {
+		if method != pluginabi.MethodHostHTTPDo {
+			return hostOK(map[string]any{}), nil
+		}
+		return hostOK(pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"usage":{}}`)}), nil
+	}}
+	m := NewManager(NewHostBridge(f.call))
+	m.cfg = planConfig("quota-key")
+	var card pluginapi.QuotaFetchResponse
+	decodeResult(t, mustHandle(t, m, pluginabi.MethodQuotaFetch, []byte(`{"provider":"opencode-go","attributes":{"api_key":"quota-key"}}`)), &card)
+	if card.Subscription == nil || card.Subscription.Plan != "go" {
+		t.Fatalf("subscription = %+v", card.Subscription)
+	}
+	if len(card.Groups) != 0 || len(card.Summary) != 0 {
+		t.Fatalf("card = %+v, want plan label only", card)
+	}
+}
