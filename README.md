@@ -349,7 +349,15 @@ verify which source it came from — uninstall it and install it from the store.
 
 ## Testing
 
+`internal/loadsmoke` dlopen()s the built artifact during `go test`, so build
+the glibc linux/amd64 library first (CI does this before the test step). When
+the artifact is absent the smoke skips with a printed reason instead of
+failing.
+
 ```powershell
+# Build the artifact the load smoke loads
+CGO_ENABLED=1 go build -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .
+
 # Run all tests
 go test ./...
 

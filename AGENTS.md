@@ -33,9 +33,9 @@ the sibling provider plugin. Evidence chain: `PROVENANCE.md`.
   no management page or management route
 - Go module `opencode-go-cliproxyapi`; plugin version `2.3.0`
 
-Verification is **offline only** (`internal/plugin/abi_test.go` + the config,
-catalog and quota suites). Binary equality with the running `.so` is not
-attested; deployment stays an operator action and must compare this build's
+Verification is **offline only** (`internal/plugin/abi_test.go`, the config,
+catalog and quota suites, and the `internal/loadsmoke` dlopen dry-run of the
+built artifact). Binary equality with the running `.so` is not attested; deployment stays an operator action and must compare this build's
 registration surface with the live plugin's registration log first.
 
 ## Layout
@@ -51,8 +51,9 @@ internal/catalog/          per-plan model catalog discovery + normalization
 internal/config/           plugins.configs.<id> schema: api-keys, plans (name/base-url/catalog-url/model-prefix/enabled), catalog, protocols, route-overrides, request-timeout, max-response-bytes, allow-http
 internal/errclass/         error classification + explainable upstream error reporting
 internal/thinking/         numeric Anthropic budget -> effort-level conversion (explicit effort values never touched)
+internal/loadsmoke/        dlopen() load smoke: the built .so through the real C ABI against a fake host (offline; skips when the artifact is absent)
 tests/live_*_test.go       live-environment regression tests behind the `live` build tag (CI runs offline)
-.github/workflows/         tests.yml (vet + test + glibc c-shared build) and build.yml (7-target release matrix + tag releases)
+.github/workflows/         tests.yml (glibc c-shared build, then vet + test) and build.yml (7-target release matrix + tag releases)
 .github/scripts/           package-release.go (release zip + sha256 packaging)
 ```
 
@@ -94,6 +95,10 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
 
 ```sh
 go vet ./...
+# Build first: internal/loadsmoke dlopen()s the artifact during go test and
+# skips, with a printed reason, when it is absent.
+TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
+  go build -buildmode=c-shared -o plugins/linux/amd64/easycliproxyapi-opencode-provider.so .
 go test ./...                       # offline; tests/live_*_test.go are behind the `live` build tag
 gofmt -l .
 
@@ -104,11 +109,12 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
 
 - Machine rules: no `/tmp` (RAM tmpfs) — use `TMPDIR=$HOME/.cache/opencode/tmp`
   and `GOCACHE` under it for Go builds; no-rm (trash-move, never hard-delete).
-- CI: `.github/workflows/tests.yml` runs vet + tests + a glibc linux/amd64
-  c-shared build on every push/PR (the EasyCLI container is Debian-based, so
-  musl builds will not `dlopen`). `.github/workflows/build.yml` runs the
-  7-target matrix (linux amd64/arm64, darwin amd64/arm64, windows amd64,
-  windows arm64, freebsd amd64) and publishes a GitHub release from
+- CI: `.github/workflows/tests.yml` builds the glibc linux/amd64 c-shared
+  artifact FIRST, then runs vet + tests on every push/PR, so
+  `internal/loadsmoke` dlopen()s the real `.so` (the EasyCLI container is
+  Debian-based, so musl builds will not `dlopen`). `.github/workflows/build.yml`
+  runs the 7-target matrix (linux amd64/arm64, darwin amd64/arm64, windows
+  amd64, windows arm64, freebsd amd64) and publishes a GitHub release from
   `RELEASE_NOTES.md` on `v*` tag push.
 - Release checklist (CONTRIBUTING.md): bump `pluginVersion` in
   `internal/plugin/plugin.go` **and** `version` in `registry.json` (the store

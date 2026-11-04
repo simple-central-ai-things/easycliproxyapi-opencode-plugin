@@ -43,6 +43,12 @@ the sibling provider plugin. See `PROVENANCE.md` for the evidence chain.
   the shared library is published as `easycliproxyapi-opencode-provider` to
   match the deployed artifact. Version is `2.3.0`; `registry.json` and the
   repository URL point at this repository.
+- **CI load smoke:** `.github/workflows/tests.yml` builds the glibc
+  `linux/amd64` artifact before `go test`, and `internal/loadsmoke`
+  `dlopen()`s it, calls `cliproxy_plugin_init` with a fake host ABI and
+  replays the identity, credential-reconcile and no-leak checks through the
+  real C exports. It skips (with a printed reason) when the artifact cannot
+  be built in that environment.
 - **Release prep:** `pluginVersion`, `registry.json` and the release docs are
   in lockstep at `2.3.0` and an offline test enforces that lockstep. The
   annotated `v2.3.0` tag is not pushed by this change; CI publishes the
