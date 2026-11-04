@@ -1,15 +1,15 @@
 ---
 name: opencode-provider
-description: Use when building, debugging, testing, or deploying the OpenCode Go EasyCLI provider plugin (easycliproxyapi-opencode-plugin), or when touching the opencode-go provider inside the EasyCLI/CLIProxyAPI bridge (SCPM easycli-proxy, port 8792). Trigger words: opencode plugin, opencode-go-provider, easycliproxyapi-opencode-plugin, OpenCode Go provider, opencode-go model prefix, OpenCode Go quota page, CPA provider plugin .so.
+description: Use when building, debugging, testing, or deploying the OpenCode Go EasyCLI provider plugin (easycliproxyapi-opencode-plugin), or when touching the opencode-go provider inside the EasyCLI/CLIProxyAPI stack (SCPM easycli/, CLIProxyAPI embedded in the single gateway container — no EasyCLI host port). Trigger words: opencode plugin, opencode-go-provider, easycliproxyapi-opencode-plugin, OpenCode Go provider, opencode-go model prefix, OpenCode Go quota cards, CPA provider plugin .so.
 ---
 
 # OpenCode provider plugin
 
 Native Go CLIProxyAPI/EasyCLI plugin that exposes OpenCode Go as a single
-provider (`opencode-go`) inside the EasyCLI bridge: one model catalog, one key
+provider (`opencode-go`) inside the EasyCLI stack: one model catalog, one key
 pool, multi-protocol translation (Chat Completions / Anthropic Messages /
-Responses), config-authoritative credential reconciliation, and an OpenCode Go
-quota page in the management panel.
+Responses), config-authoritative credential reconciliation, and host-native
+quota cards (no plugin-owned management page).
 
 ## Key paths
 
@@ -24,8 +24,10 @@ quota page in the management panel.
 - `registry.json` — plugin-store identity (this repository, version 2.3.0)
 - `PROVENANCE.md` — evidence chain for the re-derived v2.3.0 surface
 - `tests/live_*_test.go` — behind the `live` build tag; CI runs offline
-- `simple-central-proxy-manager/easycli-proxy/` — the EasyCLI stack this plugin runs in
-  (config template, deploy.sh, `:8792`, SCSM `tag:easycli` rendering)
+- `simple-central-proxy-manager/easycli/` — the EasyCLI stack this plugin runs in
+  (config template, deploy.sh, SCSM `tag:easycli` rendering); its CLIProxyAPI
+  process runs inside that repo's single `gateway` container, with no
+  standalone EasyCLI container and no EasyCLI host port
 
 ## Contracts / env
 
@@ -41,7 +43,7 @@ quota page in the management panel.
   `route-overrides`, `request-timeout`, `max-response-bytes`, `allow-http`.
 - `api-keys` values support `${ENV_VAR}` expansion (`os.ExpandEnv`). Live keys
   are `OPENCODE_GO_API_KEY_1/2`, rendered from the SCSM `tag:easycli` export by
-  SCPM `easycli-proxy/deploy.sh` (names only — values never in this repo).
+  SCPM `easycli/deploy.sh` (names only — values never in this repo).
 - Auth records: `opencode-go-key-<sha256(api_key)>.json` in the CPA auth dir;
   reconciled on every register/reconfigure; removals use staged prove-then-delete.
 - Quota: v8 `QuotaProvider` native cards (`quota.identifier` / `describe` /
@@ -71,7 +73,8 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
   `registry.json` version, rewrite `RELEASE_NOTES.md`, tag `vX.Y.Z`.
 - Deploy is a hand install (not store-managed): glibc `.so` into the EasyCLI
   bind-mounted `plugins/linux/amd64/`, `plugins.configs.<id>` block in the
-  EasyCLI config (panel-managed), recreate the `easycli-api` container.
+  EasyCLI config (panel-managed), restart the SCPM `gateway` container
+  (`easycli/deploy.sh`).
   Real host values: folder-level `.opencode/ops/local-infrastructure.md` (private).
 
 ## Gotchas

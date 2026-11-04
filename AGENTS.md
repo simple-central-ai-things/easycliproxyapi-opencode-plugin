@@ -1,8 +1,10 @@
 # AGENTS.md — easycliproxyapi-opencode-plugin
 
 Native Go plugin for CLIProxyAPI/EasyCLI that exposes **OpenCode Go** as a
-single provider (`opencode-go`) inside the org's EasyCLI bridge
-(simple-central-proxy-manager `easycli-proxy`, LAN port `:8792`): one model
+single provider (`opencode-go`) inside the org's EasyCLI stack
+(simple-central-proxy-manager `easycli/`, whose CLIProxyAPI process runs in
+the single SCPM `gateway` container — no standalone EasyCLI container and no
+EasyCLI host port): one model
 catalog, one key pool, protocol translation across OpenAI Chat Completions,
 Anthropic Messages and OpenAI Responses, config-authoritative credential
 reconciliation, and host-native quota cards rendered on the EasyCLI credential
@@ -73,7 +75,7 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
   Full option table: README → Configuration.
 - **Env keys (names only)**: the live deployment feeds
   `OPENCODE_GO_API_KEY_1/2` from the SCSM `tag:easycli` export rendered by
-  SCPM `easycli-proxy/deploy.sh` into the container `.env`. No host-specific
+  SCPM `easycli/deploy.sh` into the container `.env`. No host-specific
   values in this repo.
 - **Auth records**: each configured key is materialized as
   `opencode-go-key-<sha256(api_key)>.json` in the CPA auth directory; every
@@ -87,8 +89,10 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
   RPC schema 6; `cliproxy_plugin_init` rejects a host ABI version mismatch.
   Registration metadata must keep `GitHubRepository` set (host `validPlugin`
   gate).
-- **Cross-repo**: the EasyCLI stack (container, config, `:8792`, deploy) is
-  owned by `simple-central-proxy-manager/easycli-proxy`; this repo only ships
+- **Cross-repo**: the EasyCLI stack (config template, deploy, SCSM `tag:easycli`
+  rendering) is owned by `simple-central-proxy-manager/easycli/`; its
+  CLIProxyAPI process runs inside that repo's single `gateway` container (no
+  standalone EasyCLI container, no EasyCLI host port). This repo only ships
   the plugin source.
 
 ## Build / test / run
@@ -111,7 +115,7 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
   and `GOCACHE` under it for Go builds; no-rm (trash-move, never hard-delete).
 - CI: `.github/workflows/tests.yml` builds the glibc linux/amd64 c-shared
   artifact FIRST, then runs vet + tests on every push/PR, so
-  `internal/loadsmoke` dlopen()s the real `.so` (the EasyCLI container is
+  `internal/loadsmoke` dlopen()s the real `.so` (the SCPM gateway container is
   Debian-based, so musl builds will not `dlopen`). `.github/workflows/build.yml`
   runs the 7-target matrix (linux amd64/arm64, darwin amd64/arm64, windows
   amd64, windows arm64, freebsd amd64) and publishes a GitHub release from
@@ -135,9 +139,10 @@ Hand install — the live deployment is not installed through the plugin store:
    (`plugins/linux/amd64/` next to the EasyCLI `config.yaml` on `<deploy-host>`).
 3. Ensure a `plugins.configs.opencode-go-provider` block with env-expanded
    `api-keys` and the intended `plans:` exists in the EasyCLI `config.yaml`
-   (panel-managed; see SCPM `easycli-proxy` for template + deploy scripts).
-4. Recreate the `easycli-api` container; verify the plugin registers (catalog
-   refresh log line) before relying on a plan's `<prefix>/<model>`.
+   (panel-managed; see SCPM `easycli/` for template + deploy scripts).
+4. Restart the SCPM `gateway` container (`easycli/deploy.sh`); verify the
+   plugin registers (catalog refresh log line) before relying on a plan's
+   `<prefix>/<model>`.
 
 **Verification before replacement:** this source was verified offline only.
 Compare the build's registration surface (plugin id, version, capabilities)
@@ -158,8 +163,9 @@ level).
 
 ## Cross-repo links
 
-- `simple-central-proxy-manager` (`easycli-proxy/`) — EasyCLI bridge host,
-  config template, `:8792`, SCSM `tag:easycli` rendering.
+- `simple-central-proxy-manager` (`easycli/`) — EasyCLI config template +
+  deploy, SCSM `tag:easycli` rendering; its CLIProxyAPI process runs inside that
+  repo's single `gateway` container.
 - `simple-central-agent-config` (SCAC) — consumer harness configs that route
   through the gateway.
 - `simple-central-ai-things/docs` — public architecture hub; per-repo page

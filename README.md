@@ -6,10 +6,13 @@ The plugin unifies model discovery, protocol translation, and execution across O
 
 This repository is the org source repo for the OpenCode Go EasyCLI provider
 plugin (`simple-central-ai-things`), deployed into the EasyCLI/CLIProxyAPI
-bridge served by `simple-central-proxy-manager` (`easycli-proxy/`, LAN port
-`8792`). It keeps its functional `easycliproxyapi-<provider>-plugin` name (no
-SC short name) because the plugin id and the store-polled repo URL are bound
-to the binary. See `AGENTS.md` for contracts, build/test and deploy notes.
+stack owned by `simple-central-proxy-manager` (`easycli/`). EasyCLI is not a
+standalone service: its CLIProxyAPI process runs inside SCPM's single
+`gateway` container (Caddy + LiteLLM + CLIProxyAPI), has no published port of
+its own, and is reached through that container's single published port. It
+keeps its functional `easycliproxyapi-<provider>-plugin` name (no SC short
+name) because the plugin id and the store-polled repo URL are bound to the
+binary. See `AGENTS.md` for contracts, build/test and deploy notes.
 
 ## Provenance: re-derived v2.3.0 source
 
@@ -90,7 +93,7 @@ tests/live_*_test.go       live regression tests behind the `live` build tag (CI
   expansion.
 - **Env keys (names only):** the deployment feeds `OPENCODE_GO_API_KEY_1/2`
   from the SCSM `tag:easycli` export rendered by SCPM
-  `easycli-proxy/deploy.sh` into the container `.env`.
+  `easycli/deploy.sh` into the container `.env`.
 - **Auth records:** `opencode-go-key-<sha256(api_key)>.json` in the CPA auth
   directory, reconciled against `api-keys` on every register/reconfigure
   (see [Credential reconciliation](#credential-reconciliation)). API-key
@@ -100,9 +103,14 @@ tests/live_*_test.go       live regression tests behind the `live` build tag (CI
   credential attribute `plan` when present, otherwise the first enabled plan.
 - **Host contract:** CLIProxyAPI native plugin ABI
   (`github.com/router-for-me/CLIProxyAPI/v8 v8.0.0`, RPC schema 6, C ABI
-  version 1). The EasyCLI stack itself (container, config, deploy) is owned by
-  `simple-central-proxy-manager/easycli-proxy` and serves the
-  OpenAI-compatible API on LAN port `8792`.
+  version 1). The EasyCLI stack itself (config template, deploy, SCSM
+  rendering) is owned by `simple-central-proxy-manager/easycli/`. There is no
+  standalone EasyCLI container and no published EasyCLI port: the CLIProxyAPI
+  process runs inside SCPM's single `gateway` container, serves its
+  OpenAI-compatible `/v1` API on loopback (`127.0.0.1:8317`) inside that
+  container, and Caddy publishes the panel/management/OAuth paths on the
+  gateway's single published port. The former EasyCLI host port `:8792` is
+  gone.
 
 ## Requirements
 
@@ -140,10 +148,11 @@ The org deployment installs the plugin by hand (not through the plugin store):
    (`plugins/linux/amd64/`) on the deploy host.
 3. Ensure a `plugins.configs.opencode-go-provider` block with env-expanded
    `api-keys` and the intended `plans:` exists in the EasyCLI `config.yaml`
-   (panel-managed — see SCPM `easycli-proxy` for the template and deploy
+   (panel-managed — see SCPM `easycli/` for the template and deploy
    scripts).
-4. Recreate the EasyCLI container and verify the plugin registers (catalog
-   refresh log) before relying on a plan's `<prefix>/<model>`.
+4. Restart the SCPM `gateway` container (`easycli/deploy.sh` does it) and
+   verify the plugin registers (catalog refresh log) before relying on a
+   plan's `<prefix>/<model>`.
 
 > [!WARNING]
 > This repository is source-only and was verified offline. Before replacing a
