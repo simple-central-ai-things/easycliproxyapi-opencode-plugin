@@ -5,7 +5,8 @@ single provider (`opencode-go`) inside the org's EasyCLI bridge
 (simple-central-proxy-manager `easycli-proxy`, LAN port `:8792`): one model
 catalog, one key pool, protocol translation across OpenAI Chat Completions,
 Anthropic Messages and OpenAI Responses, config-authoritative credential
-reconciliation, and an "OpenCode Go Quota" page in the EasyCLI management panel.
+reconciliation, and host-native quota cards rendered on the EasyCLI credential
+cards (no plugin-owned management page).
 
 This repo keeps its functional `easycliproxyapi-<provider>-plugin` name — no SC
 short name — because the plugin id and the plugin-store-polled repo URL are
@@ -43,6 +44,7 @@ registration surface with the live plugin's registration log first.
 main.go                    CGO glue: cliproxy_plugin_init / cliproxyPluginCall ABI exports; every RPC forwarded to internal/plugin.HandleCall
 registry.json              plugin-store identity: id opencode-go-provider, version 2.3.0, this repository
 PROVENANCE.md              evidence chain for the re-derived v2.3.0 surface
+CHANGELOG.md               running release history (RELEASE_NOTES.md is the current release body)
 internal/plugin/           dispatcher, registration metadata, executor, credential reconciliation, v8 quota provider
 internal/adapter/          protocol translation: chatcompletions/, messages/, responses/, shared/
 internal/catalog/          per-plan model catalog discovery + normalization
@@ -110,8 +112,11 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
   `RELEASE_NOTES.md` on `v*` tag push.
 - Release checklist (CONTRIBUTING.md): bump `pluginVersion` in
   `internal/plugin/plugin.go` **and** `version` in `registry.json` (the store
-  falls back to it), rewrite `RELEASE_NOTES.md` for the new version, commit
-  `chore(release): vX.Y.Z`, push main, then push the annotated tag.
+  falls back to it), add the `CHANGELOG.md` entry, rewrite `RELEASE_NOTES.md`
+  for the new version, commit `chore(release): vX.Y.Z`, push main, then push
+  the annotated tag. Do not rename the CI `.so` artifact
+  (`easycliproxyapi-opencode-provider`): the store-polled repo URL and the
+  plugin id are bound to it.
 
 ## Deploy
 

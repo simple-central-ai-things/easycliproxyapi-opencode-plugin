@@ -64,6 +64,7 @@ This plugin exposes OpenCode Go as a single provider (`opencode-go`) backed by a
 main.go                    CGO glue: cliproxy_plugin_init / cliproxyPluginCall ABI exports; every RPC forwarded to internal/plugin.HandleCall
 registry.json              plugin-store identity: id opencode-go-provider, version, this repository
 PROVENANCE.md              how the deployed v2.3.0 surface was re-derived (evidence chain)
+CHANGELOG.md               release history (RELEASE_NOTES.md is the current release body)
 internal/plugin/           dispatcher, registration metadata, executor, credential reconciliation, v8 quota provider
 internal/adapter/          protocol translation: chatcompletions/, messages/, responses/, shared/
 internal/catalog/          per-plan model catalog discovery + normalization

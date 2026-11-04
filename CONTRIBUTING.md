@@ -37,7 +37,7 @@ go build -tags debug -buildmode=c-shared -o plugins/windows/amd64/easycliproxyap
 2. **Debug-Mode Verification:** Verify all changes using `-tags debug`. Release packaging is handled separately by CI.
 3. **Test Coverage:** All new or modified behavioral paths require unit tests. Both streaming and non-streaming tests are required for protocol changes.
 4. **Offline Execution:** Unit tests must run locally and offline against mock host clients. Do not introduce dependencies on live external APIs.
-5. **Documentation:** Append or merge changes into `RELEASE_NOTES.md` and update `README.md` if user-facing configuration changes. A change to the plugin identity, config schema, SDK generation or quota surface must also update `PROVENANCE.md` (it records why the source matches the deployed artifact).
+5. **Documentation:** Append or merge changes into `CHANGELOG.md` and `RELEASE_NOTES.md` and update `README.md` if user-facing configuration changes. A change to the plugin identity, config schema, SDK generation or quota surface must also update `PROVENANCE.md` (it records why the source matches the deployed artifact).
 6. **Code Style:** Format all code with standard `gofmt` and adhere to idiomatic Go conventions.
 
 ---
@@ -54,7 +54,19 @@ go build -tags debug -buildmode=c-shared -o plugins/windows/amd64/easycliproxyap
 ## Release Checklist
 
 1. Bump `pluginVersion` in `internal/plugin/plugin.go`.
-2. Rewrite `RELEASE_NOTES.md` as the release notes for that version — the file is published verbatim as the GitHub release body — and point its compare link at the new tag.
-3. Set `version` in `registry.json` to the same version. The plugin store falls back to this field when its GitHub release lookup fails (anonymous API quota, network, proxy); if it is missing or stale the store cannot show an update badge.
+2. Add the `CHANGELOG.md` entry for the version (user-facing summary), then
+   rewrite `RELEASE_NOTES.md` as the release notes for that version — the file
+   is published verbatim as the GitHub release body — and point its compare
+   link at the new tag.
+3. Set `version` in `registry.json` to the same version. The plugin store
+   falls back to this field when its GitHub release lookup fails (anonymous API
+   quota, network, proxy); if it is missing or stale the store cannot show an
+   update badge. `internal/plugin/release_test.go` fails if the two drift.
 4. Run `go test ./...`, `go test ./...`, `go vet ./...` and `gofmt -l .`.
-5. Commit `chore(release): vX.Y.Z`, push `main`, then create and push the annotated tag. CI builds the six release targets and publishes the GitHub release from `RELEASE_NOTES.md`.
+5. Commit `chore(release): vX.Y.Z`, push `main`, then create and push the
+   annotated tag. CI builds the six release targets and publishes the GitHub
+   release from `RELEASE_NOTES.md`.
+
+Do not rename the CI `.so` artifact (`easycliproxyapi-opencode-provider`) or
+the plugin id (`opencode-go-provider`): the store-polled repo URL, the
+EasyCLI config key and the plugin-store binding all depend on both.

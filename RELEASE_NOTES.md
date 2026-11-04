@@ -23,11 +23,22 @@ v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
   v8 `QuotaProvider` interface (`quota.identifier` / `describe` / `fetch` /
   `reset`), with the rolling, weekly and monthly windows normalized into
   buckets. `quota.reset` reports `unsupported`.
+- **Quota card parity:** the card shape matches the sibling
+  `easycliproxyapi-commandcode-provider` plugin — subscription plan label, a
+  plan summary metric and one bucket per reported window. The credential key
+  resolves from the parsed `api_key` attribute and falls back to host-managed
+  `metadata`; remaining fractions are clamped to `0..1`; a window the upstream
+  never described is omitted instead of being drawn as a full bar.
 - **Identity:** runtime plugin id stays `opencode-go-provider` (the EasyCLI
   config-contract key); the shared library is published as
   `easycliproxyapi-opencode-provider` to match the deployed artifact. Version
   is `2.3.0`; `registry.json` and the repository URL now point at this
   repository instead of the upstream fork.
+- **Release prep:** `pluginVersion`, `registry.json` and the release docs are
+  in lockstep at `2.3.0`, and an offline test enforces that lockstep so a
+  version bump cannot drift. The annotated `v2.3.0` tag and the GitHub release
+  are a separate operator step; CI builds the release matrix and publishes this
+  file as the release body on a `v*` tag push.
 
 ### Tests (offline, no network, no secrets)
 
@@ -40,7 +51,12 @@ v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
   fail-closed for an all-plan outage, and per-record upstream base URLs.
 - Quota card surface: identifier/describe/fetch/reset envelopes, normalized
   response shape, plan selection by credential attribute, credential
-  redaction and upstream-failure classification.
+  redaction and upstream-failure classification; parity with the sibling
+  plugin on the metadata key fallback, remaining-fraction clamping and
+  omission of unreported windows.
+- Release identity: `registry.json` (plugin id, version, repository) and the
+  release docs are pinned to the `plugin.go` constants, so a version bump
+  cannot drift from the docs.
 - Auth records: the canonical record written by reconciliation parses back
   through `auth.parse`.
 
@@ -55,3 +71,5 @@ v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
 - This repository is source-only for this release. Do not overwrite a running
   deployment without comparing this surface against the live plugin's
   registration log first.
+
+**Full Changelog**: https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin/compare/v1.0.3...v2.3.0
