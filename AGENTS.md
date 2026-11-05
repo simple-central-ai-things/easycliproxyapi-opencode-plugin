@@ -166,7 +166,7 @@ level).
 - `simple-central-proxy-manager` (`easycli/`) — EasyCLI config template +
   deploy, SCSM `tag:easycli` rendering; its CLIProxyAPI process runs inside that
   repo's single `gateway` container.
-- `simple-central-agent-config` (SCAC) — consumer harness configs that route
+- `simple-central-agent-config` (SCACFG) — consumer harness configs that route
   through the gateway.
 - `simple-central-ai-things/docs` — public architecture hub; per-repo page
   `repos/easycliproxyapi-opencode-plugin.md` (live v2.3.0 identity; update it
