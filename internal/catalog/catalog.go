@@ -109,6 +109,15 @@ type rawModel struct {
 	OutputModalities []string            `json:"output_modalities"`
 	Thinking         *rawThinking        `json:"thinking"`
 	ReasoningLevels  []rawReasoningLevel `json:"supported_reasoning_levels"`
+	// Limit is the OpenCode catalog's context/output envelope
+	// ({"context":N,"output":M}); OpenCode does not emit flat
+	// context_length / max_output_tokens, so this is the source for those.
+	Limit rawLimit `json:"limit"`
+}
+
+type rawLimit struct {
+	Context int64 `json:"context"`
+	Output  int64 `json:"output"`
 }
 
 // rawReasoningLevel is one entry of the catalog's declared reasoning-level
@@ -382,8 +391,8 @@ func (m *Manager) swap(rawByPlan map[string][]rawModel, extraWarns ...string) {
 				DisplayName:  display,
 				Protocol:     route,
 				EndpointPath: endpoint,
-				ContextLimit: e.ContextLength,
-				OutputLimit:  e.MaxOutputTokens,
+				ContextLimit: firstPositive(e.ContextLength, e.Limit.Context),
+				OutputLimit:  firstPositive(e.MaxOutputTokens, e.Limit.Output),
 				InputModes:   inputModes,
 				OutputModes:  outputModes,
 				Thinking:     normalizeThinking(e.Thinking, e.ReasoningLevels),
@@ -480,6 +489,16 @@ func endpointEscapesBase(baseURL, endpoint string) bool {
 
 func firstNonEmpty(a, b []string) []string {
 	if len(a) > 0 {
+		return a
+	}
+	return b
+}
+
+// firstPositive returns the first strictly-positive value, else the fallback —
+// a flat catalog field (context_length) and the OpenCode limit envelope both
+// declare the same fact; whichever the catalog actually filled wins.
+func firstPositive(a, b int64) int64 {
+	if a > 0 {
 		return a
 	}
 	return b
