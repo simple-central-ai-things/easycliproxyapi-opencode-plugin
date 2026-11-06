@@ -9,7 +9,7 @@ package loadsmoke
 //
 // No EasyCLI binary, deploy host, network or credential is involved. Beyond
 // identity and config reconcile, the assertions that matter are:
-//   - the plugin publishes its pinned identity (`opencode-go-provider`,
+//   - the plugin publishes its pinned identity (`easycliproxyapi-opencode-provider`,
 //     2.3.0), its plan-aware config surface and native capabilities;
 //   - a configured key is materialized into the host's credential store, and
 //     a reconfigure observes the same record through the management list/get
@@ -40,7 +40,7 @@ import (
 
 const (
 	providerID = "opencode-go"
-	pluginID   = "opencode-go-provider"
+	pluginID   = "easycliproxyapi-opencode-provider"
 )
 
 type hostCall struct {

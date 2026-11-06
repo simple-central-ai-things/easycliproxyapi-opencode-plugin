@@ -1,6 +1,6 @@
 ---
 name: opencode-provider
-description: Use when building, debugging, testing, or deploying the OpenCode Go EasyCLI provider plugin (easycliproxyapi-opencode-plugin), or when touching the opencode-go provider inside the EasyCLI/CLIProxyAPI stack (SCPM easycli/, CLIProxyAPI embedded in the single gateway container — no EasyCLI host port). Trigger words: opencode plugin, opencode-go-provider, easycliproxyapi-opencode-plugin, OpenCode Go provider, opencode-go model prefix, OpenCode Go quota cards, CPA provider plugin .so.
+description: Use when building, debugging, testing, or deploying the OpenCode Go EasyCLI provider plugin (easycliproxyapi-opencode-plugin), or when touching the opencode-go provider inside the EasyCLI/CLIProxyAPI stack (SCPM easycli/, CLIProxyAPI embedded in the single gateway container — no EasyCLI host port). Trigger words: opencode plugin, easycliproxyapi-opencode-provider, easycliproxyapi-opencode-plugin, OpenCode Go provider, opencode-go model prefix, OpenCode Go quota cards, CPA provider plugin .so.
 ---
 
 # OpenCode provider plugin
@@ -31,12 +31,12 @@ quota cards (no plugin-owned management page).
 
 ## Contracts / env
 
-- Plugin id: `opencode-go-provider` (registration metadata, store id and the
+- Plugin id: `easycliproxyapi-opencode-provider` (registration metadata, store id and the
   EasyCLI config key). Library filename: `easycliproxyapi-opencode-provider`
   (CI `LIB_BASE`) — the deployed artifact name, not the runtime identity.
 - Provider id: `opencode-go`; each enabled plan publishes its own model prefix
   (`opencode-go/<model>`, `opencode-zen/<model>`). Bare upstream IDs also resolve.
-- Config: `plugins.configs.opencode-go-provider` with a shared `api-keys` pool
+- Config: `plugins.configs.easycliproxyapi-opencode-provider` with a shared `api-keys` pool
   and a `plans:` list (`name`, `base-url`, `catalog-url`, `model-prefix`,
   `enabled`, `note`). A config without `plans:` loads as one implicit `go` plan
   from `base-url`/`model-prefix`. Shared: `catalog`, `protocols`,
@@ -89,7 +89,7 @@ TMPDIR=$HOME/.cache/opencode/tmp CGO_ENABLED=1 \
 - Credential reconciliation is best-effort on purpose: housekeeping failures
   are `warn`s; a failed registration would drop the whole provider.
 - The EasyCLI config is panel-managed; SCPM's template/tests pin
-  `opencode-go-provider` and the `plans:` shape — template edits prove nothing
+  `easycliproxyapi-opencode-provider` and the `plans:` shape — template edits prove nothing
   about the running host.
 - Registration metadata with an empty `GitHubRepository` is rejected by the
   host `validPlugin` gate.

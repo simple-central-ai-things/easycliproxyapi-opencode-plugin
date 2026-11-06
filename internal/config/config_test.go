@@ -338,7 +338,7 @@ func TestValidateURLRejectsQueryFragmentUserinfo(t *testing.T) {
 }
 
 // deployedPlansYAML mirrors the shape the EasyCLI deployment writes under
-// `plugins.configs.opencode-go-provider`: one key pool, two plans, the second
+// `plugins.configs.easycliproxyapi-opencode-provider`: one key pool, two plans, the second
 // disabled until the account is funded. Values are synthetic.
 const deployedPlansYAML = `api-keys:
   - value: ${OPENCODE_GO_API_KEY_1}

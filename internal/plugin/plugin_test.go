@@ -432,7 +432,7 @@ func TestRegisterSuccessPublishesModels(t *testing.T) {
 	if reg.SchemaVersion != pluginabi.SchemaVersion {
 		t.Fatalf("schema_version = %d, want %d", reg.SchemaVersion, pluginabi.SchemaVersion)
 	}
-	if reg.Metadata.Name != "opencode-go-provider" || reg.Metadata.Version != pluginVersion ||
+	if reg.Metadata.Name != "easycliproxyapi-opencode-provider" || reg.Metadata.Version != pluginVersion ||
 		reg.Metadata.GitHubRepository != githubRepoURL || len(reg.Metadata.ConfigFields) != 11 {
 		t.Fatalf("metadata wrong: %+v", reg.Metadata)
 	}

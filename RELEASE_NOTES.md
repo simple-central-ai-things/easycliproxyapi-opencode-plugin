@@ -29,7 +29,7 @@ v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
   resolves from the parsed `api_key` attribute and falls back to host-managed
   `metadata`; remaining fractions are clamped to `0..1`; a window the upstream
   never described is omitted instead of being drawn as a full bar.
-- **Identity:** runtime plugin id stays `opencode-go-provider` (the EasyCLI
+- **Identity:** runtime plugin id stays `easycliproxyapi-opencode-provider` (the EasyCLI
   config-contract key); the shared library is published as
   `easycliproxyapi-opencode-provider` to match the deployed artifact. Version
   is `2.3.0`; `registry.json` and the repository URL now point at this

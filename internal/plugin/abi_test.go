@@ -81,7 +81,7 @@ func TestABIRegistrationIdentityAndCapabilities(t *testing.T) {
 	if reg.SchemaVersion != pluginabi.SchemaVersion {
 		t.Fatalf("schema_version = %d, want %d", reg.SchemaVersion, pluginabi.SchemaVersion)
 	}
-	if reg.Metadata.Name != "opencode-go-provider" {
+	if reg.Metadata.Name != "easycliproxyapi-opencode-provider" {
 		t.Fatalf("plugin id = %q, want the SCPM config-contract identity", reg.Metadata.Name)
 	}
 	if reg.Metadata.Version != "2.3.0" {

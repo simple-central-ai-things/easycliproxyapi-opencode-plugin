@@ -93,8 +93,8 @@ func TestReleaseDocsCarryCurrentVersion(t *testing.T) {
 // store-polled repo URL, the plugin-store binding and the EasyCLI config key
 // all depend on the runtime plugin id and the shared-library filename.
 func TestReleaseArtifactNamesAreStable(t *testing.T) {
-	if pluginName != "opencode-go-provider" {
-		t.Fatalf("runtime plugin id = %q, the EasyCLI config contract pins opencode-go-provider", pluginName)
+	if pluginName != "easycliproxyapi-opencode-provider" {
+		t.Fatalf("runtime plugin id = %q, the EasyCLI config contract pins easycliproxyapi-opencode-provider", pluginName)
 	}
 	if pluginVersion != "2.3.0" {
 		t.Fatalf("plugin version = %q, the deployed v2.3.0 surface is pinned", pluginVersion)

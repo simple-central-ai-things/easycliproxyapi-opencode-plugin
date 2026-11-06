@@ -12,7 +12,7 @@ permissions:
 
 env:
   # Runtime plugin id (registration metadata + config key contract).
-  PLUGIN_ID: opencode-go-provider
+  PLUGIN_ID: easycliproxyapi-opencode-provider
   # Deployed v2.3.0 shared-library filename (the host loads the file, then
   # registers the plugin id above).
   LIB_BASE: easycliproxyapi-opencode-provider

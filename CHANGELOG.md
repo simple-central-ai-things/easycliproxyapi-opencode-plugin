@@ -5,6 +5,17 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
+## Unreleased (2026-11-06)
+
+- **Identity rename:** the runtime plugin name/id is now `easycliproxyapi-opencode-provider`,
+  matching the library basename and the sibling provider plugins' convention
+  (`easycliproxyapi-{commandcode,mistral,chatgpt}-provider`). Previously the panel
+  displayed `opencode-go-provider` while the `.so` and the EasyCLI config key were
+  already `easycliproxyapi-opencode-provider`, so the tile read inconsistently next to
+  the other plugins. Host binding is by the `.so` basename (unchanged), so the EasyCLI
+  config key and model prefix (`opencode-go`) are untouched; only the reported name
+  changed. Version remains 2.3.0 pending a tagged release.
+
 ## v2.3.0 — 2026-11-04 (re-derived deployed surface, tag-ready)
 
 Re-derivation of the v2.3.0 plugin surface running in the EasyCLI
@@ -38,7 +49,7 @@ the sibling provider plugin. See `PROVENANCE.md` for the evidence chain.
   auth-directory re-parse), remaining fractions are clamped to `0..1`, and a
   window the upstream never described is omitted instead of being drawn as a
   full bar. No real API calls are made by the offline tests.
-- **Identity:** runtime plugin id stays `opencode-go-provider` (the EasyCLI
+- **Identity:** runtime plugin id stays `easycliproxyapi-opencode-provider` (the EasyCLI
   config-contract key pinned by `simple-central-proxy-manager/easycli/tests`);
   the shared library is published as `easycliproxyapi-opencode-provider` to
   match the deployed artifact. Version is `2.3.0`; `registry.json` and the

@@ -14,7 +14,7 @@ example.
 
 | Surface | Deployed (canonical) | This source |
 | --- | --- | --- |
-| Runtime plugin id | `opencode-go-provider` (EasyCLI `plugins.configs` key) | `pluginName` in `internal/plugin/plugin.go`, `registry.json` |
+| Runtime plugin id | `easycliproxyapi-opencode-provider` (EasyCLI `plugins.configs` key) | `pluginName` in `internal/plugin/plugin.go`, `registry.json` |
 | Shared-library filename | `easycliproxyapi-opencode-provider.so` | CI `LIB_BASE` (build output name) |
 | Version | `2.3.0` | `pluginVersion`, `registry.json`, `RELEASE_NOTES.md` |
 | Host SDK | CLIProxyAPI **v8** native plugin ABI | `go.mod` → `github.com/router-for-me/CLIProxyAPI/v8 v8.0.0` |
@@ -27,11 +27,11 @@ example.
 
 1. **Config contract (identity + plan schema).**
    `simple-central-proxy-manager/easycli/config.yaml.template` writes the block
-   under `plugins.configs.opencode-go-provider` with a `plans:` list
+   under `plugins.configs.easycliproxyapi-opencode-provider` with a `plans:` list
    (`name`, `base-url`, `model-prefix`, `enabled`, operator `note`) and a single
    `api-keys` pool, and the proxy's `easycli/tests/test_config_contract.py`
    pins that id (and rejects the older `easycli-proxyapi-opencode-provider`
-   spellings). That is why the runtime id stayed `opencode-go-provider` while
+   spellings). That is why the runtime id stayed `easycliproxyapi-opencode-provider` while
    the deployed file is `easycliproxyapi-opencode-provider.so`.
 2. **SDK generation (v8).** The deployed plugin runs under a CLIProxyAPI v8
    host: v8 is the first SDK generation with the native `QuotaProvider`

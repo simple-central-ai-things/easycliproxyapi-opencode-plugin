@@ -22,11 +22,11 @@ original v2.3.0 tree was never pushed anywhere; this tree reconstructs the
 deployed surface from the public config contract, the CLIProxyAPI v8 SDK and
 the sibling provider plugin. Evidence chain: `PROVENANCE.md`.
 
-- plugin id `opencode-go-provider` (`internal/plugin/plugin.go`, `registry.json`,
+- plugin id `easycliproxyapi-opencode-provider` (`internal/plugin/plugin.go`, `registry.json`,
   CI `PLUGIN_ID`) — the EasyCLI `plugins.configs` contract key
 - library filename `easycliproxyapi-opencode-provider.so` / `.dll` / `.dylib`
   (CI `LIB_BASE`), matching the deployed artifact
-- config block `plugins.configs.opencode-go-provider` with `api-keys` + a
+- config block `plugins.configs.easycliproxyapi-opencode-provider` with `api-keys` + a
   `plans:` list (per-plan base-url / model prefix, e.g. `go` → `opencode-go`,
   `zen` → `opencode-zen`)
 - CLIProxyAPI **v8** SDK (`github.com/router-for-me/CLIProxyAPI/v8 v8.0.0`),
@@ -44,7 +44,7 @@ registration surface with the live plugin's registration log first.
 
 ```text
 main.go                    CGO glue: cliproxy_plugin_init / cliproxyPluginCall ABI exports; every RPC forwarded to internal/plugin.HandleCall
-registry.json              plugin-store identity: id opencode-go-provider, version 2.3.0, this repository
+registry.json              plugin-store identity: id easycliproxyapi-opencode-provider, version 2.3.0, this repository
 PROVENANCE.md              evidence chain for the re-derived v2.3.0 surface
 CHANGELOG.md               running release history (RELEASE_NOTES.md is the current release body)
 internal/plugin/           dispatcher, registration metadata, executor, credential reconciliation, v8 quota provider
@@ -61,14 +61,14 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
 
 ## Contracts
 
-- **Plugin id: `opencode-go-provider`** (registration metadata, plugin-store id
+- **Plugin id: `easycliproxyapi-opencode-provider`** (registration metadata, plugin-store id
   and the EasyCLI config key). Provider id: `opencode-go`; each enabled plan
   publishes its own model prefix (`opencode-go/<model>`, `opencode-zen/<model>`).
 - **Library filename:** `easycliproxyapi-opencode-provider` (CI `LIB_BASE`) —
   the deployed artifact name. The filename is not part of the runtime identity.
 - **Version:** `2.3.0`, in lockstep across `plugin.go`, `registry.json` and
   `RELEASE_NOTES.md`.
-- **Config**: `plugins.configs.opencode-go-provider` in the EasyCLI
+- **Config**: `plugins.configs.easycliproxyapi-opencode-provider` in the EasyCLI
   `config.yaml`. `api-keys` is required, shared by every plan and supports
   `${ENV_VAR}` expansion (`os.ExpandEnv` at config load). Plans are declared
   under `plans:`; a config without `plans:` loads as one implicit `go` plan.
@@ -137,7 +137,7 @@ Hand install — the live deployment is not installed through the plugin store:
    machine rules).
 2. Copy it into the EasyCLI bind-mounted plugins directory
    (`plugins/linux/amd64/` next to the EasyCLI `config.yaml` on `<deploy-host>`).
-3. Ensure a `plugins.configs.opencode-go-provider` block with env-expanded
+3. Ensure a `plugins.configs.easycliproxyapi-opencode-provider` block with env-expanded
    `api-keys` and the intended `plans:` exists in the EasyCLI `config.yaml`
    (panel-managed; see SCPM `easycli/` for template + deploy scripts).
 4. Restart the SCPM `gateway` container (`easycli/deploy.sh`); verify the

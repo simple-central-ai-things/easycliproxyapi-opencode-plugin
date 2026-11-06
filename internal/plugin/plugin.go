@@ -21,11 +21,11 @@ const ProviderID = "opencode-go"
 
 // pluginName / pluginVersion are reported in registration metadata.
 // This is the re-derived EasyCLI v2.3.0 source: same runtime plugin id the
-// SCPM config contract pins (`plugins.configs.opencode-go-provider`), v8 SDK
+// SCPM config contract pins (`plugins.configs.easycliproxyapi-opencode-provider`), v8 SDK
 // and the `plans:` config schema the deployed binary uses. Version 2.3.0 is
 // kept in lockstep with registry.json and the deployed artifact.
 const (
-	pluginName    = "opencode-go-provider"
+	pluginName    = "easycliproxyapi-opencode-provider"
 	pluginVersion = "2.3.0"
 )
 

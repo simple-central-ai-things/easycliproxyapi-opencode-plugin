@@ -68,5 +68,5 @@ go build -tags debug -buildmode=c-shared -o plugins/windows/amd64/easycliproxyap
    release from `RELEASE_NOTES.md`.
 
 Do not rename the CI `.so` artifact (`easycliproxyapi-opencode-provider`) or
-the plugin id (`opencode-go-provider`): the store-polled repo URL, the
+the plugin id (`easycliproxyapi-opencode-provider`): the store-polled repo URL, the
 EasyCLI config key and the plugin-store binding all depend on both.
