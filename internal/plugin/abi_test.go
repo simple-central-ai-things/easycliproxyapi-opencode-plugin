@@ -220,14 +220,17 @@ func TestABIAuthRecordsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestABIAuthLoginIsDeclaredUnsupported(t *testing.T) {
+// TestABIAuthLoginWired checks the C-ABI dispatch reaches the login handler.
+// With no host bridge (the loadsmoke manager) it reports auth_failure rather
+// than the retired "unsupported", proving the method is implemented.
+func TestABIAuthLoginWired(t *testing.T) {
 	m := NewManager(nil)
 	resp, err := m.HandleCall(pluginabi.MethodAuthLoginStart, []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	env := decodeEnv(t, resp)
-	if env.OK || env.Error == nil || env.Error.Code != "unsupported" {
+	if env.OK || env.Error == nil || env.Error.Code != "auth_failure" {
 		t.Fatalf("auth login start envelope = %s", resp)
 	}
 }

@@ -20,6 +20,11 @@ const (
 	DefaultRefreshInterval  = 15 * time.Minute
 	DefaultRequestTimeout   = 5 * time.Minute
 	DefaultMaxResponseBytes = int64(67108864) // 64 MiB
+	// The opencode.ai console that OAuth device login talks to, and the
+	// User-Agent the console and inference API expect (the console reads the
+	// agent string to decide which member policy to evaluate).
+	DefaultConsoleURL = "https://opencode.ai/console"
+	DefaultUserAgent  = "opencode/1.2.0"
 )
 
 type ModelPrefix struct {
@@ -75,6 +80,10 @@ type Config struct {
 	AllowHTTP        bool
 	RequestTimeout   time.Duration
 	MaxResponseBytes int64
+	// ConsoleURL is the opencode.ai console origin for OAuth device login and
+	// token refresh. UserAgent is sent on console and inference traffic.
+	ConsoleURL string
+	UserAgent  string
 }
 
 // rawConfig mirrors the YAML shape; pointer fields distinguish "unset"
@@ -92,6 +101,8 @@ type rawConfig struct {
 	AllowHTTP        bool                     `yaml:"allow-http"`
 	RequestTimeout   *string                  `yaml:"request-timeout"`
 	MaxResponseBytes *int64                   `yaml:"max-response-bytes"`
+	ConsoleURL       *string                  `yaml:"console-url"`
+	UserAgent        *string                  `yaml:"user-agent"`
 }
 
 // rawPlan mirrors one `plans:` entry. `enabled` defaults to true.
@@ -170,6 +181,8 @@ func Load(yamlBytes []byte) (Config, error) {
 		AllowHTTP:        raw.AllowHTTP,
 		RequestTimeout:   requestTimeout,
 		MaxResponseBytes: orDefault(raw.MaxResponseBytes, DefaultMaxResponseBytes),
+		ConsoleURL:       strings.TrimRight(orDefault(raw.ConsoleURL, DefaultConsoleURL), "/"),
+		UserAgent:        orDefault(raw.UserAgent, DefaultUserAgent),
 	}
 	// Legacy top-level base-url/model-prefix are the fallback for plans that
 	// omit them; with no plans at all they define the single implicit plan,

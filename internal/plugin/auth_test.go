@@ -90,9 +90,11 @@ func TestAuthDispatchMethods(t *testing.T) {
 	if !got.Handled || got.Auth.Attributes["api_key"] != "sk-dispatch-1" {
 		t.Fatalf("parse dispatch = %#v", got)
 	}
+	// With no host bridge a nil-manager cannot reach the console, so login
+	// start and poll surface auth_failure (not the retired "unsupported").
 	for _, method := range []string{pluginabi.MethodAuthLoginStart, pluginabi.MethodAuthLoginPoll} {
 		raw, _ = m.HandleCall(method, []byte(`{}`))
-		if env := decodeEnv(t, raw); env.OK || env.Error == nil || env.Error.Code != "unsupported" {
+		if env := decodeEnv(t, raw); env.OK || env.Error == nil || env.Error.Code != "auth_failure" {
 			t.Fatalf("%s = %#v", method, env.Error)
 		}
 	}

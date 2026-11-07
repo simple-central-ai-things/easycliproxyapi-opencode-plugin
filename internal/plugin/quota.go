@@ -86,7 +86,7 @@ func (p quotaProvider) FetchQuota(ctx context.Context, req pluginapi.QuotaFetchR
 	if !ok {
 		return pluginapi.QuotaFetchResponse{}, fmt.Errorf("no enabled opencode-go plan is configured")
 	}
-	usage, err := fetchQuota(ctx, m.bridge, plan.BaseURL, cfg.RequestTimeout, key)
+	usage, err := fetchQuota(ctx, m.bridge, plan.BaseURL, cfg.RequestTimeout, key, cfg.UserAgent)
 	if err != nil {
 		return pluginapi.QuotaFetchResponse{}, err
 	}
@@ -194,7 +194,7 @@ func quotaBucketFromWindow(w quotaWindow, description string) pluginapi.QuotaBuc
 	}
 }
 
-func fetchQuota(ctx context.Context, bridge *HostBridge, baseURL string, timeout time.Duration, key string) (quotaUsage, error) {
+func fetchQuota(ctx context.Context, bridge *HostBridge, baseURL string, timeout time.Duration, key string, userAgent string) (quotaUsage, error) {
 	if bridge == nil {
 		return quotaUsage{}, fmt.Errorf("quota bridge unavailable")
 	}
@@ -203,7 +203,11 @@ func fetchQuota(ctx context.Context, bridge *HostBridge, baseURL string, timeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, err := bridge.Do(ctx, pluginapi.HTTPRequest{Method: http.MethodGet, URL: strings.TrimRight(baseURL, "/") + "/usage", Headers: http.Header{"Authorization": []string{"Bearer " + key}, "Accept": []string{"application/json"}}})
+	headers := http.Header{"Authorization": []string{"Bearer " + key}, "Accept": []string{"application/json"}}
+	if userAgent != "" {
+		headers.Set("User-Agent", userAgent)
+	}
+	resp, err := bridge.Do(ctx, pluginapi.HTTPRequest{Method: http.MethodGet, URL: strings.TrimRight(baseURL, "/") + "/usage", Headers: headers})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return quotaUsage{}, fmt.Errorf("quota upstream request failed")
 	}

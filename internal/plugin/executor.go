@@ -42,14 +42,16 @@ type executorRequest struct {
 // resolvedExecution carries everything both execution paths need after
 // model/key resolution succeeded.
 type resolvedExecution struct {
-	cfg config.Config
-	rec catalog.ModelRecord
-	key string
+	cfg   config.Config
+	rec   catalog.ModelRecord
+	key   string
+	orgID string
 }
 
 // resolveExecution resolves the requested model against the snapshot and
-// extracts the key selected by CPA. A non-nil second return is a ready-made
-// failure envelope.
+// extracts the credential selected by CPA: the bearer (api_key attribute —
+// an API key OR an OAuth access token) plus the org id that scopes OAuth
+// credentials to their signed-in workspace.
 func (m *Manager) resolveExecution(req executorRequest) (*resolvedExecution, []byte) {
 	m.mu.RLock()
 	cfg, mgr := m.cfg, m.mgr
@@ -58,7 +60,11 @@ func (m *Manager) resolveExecution(req executorRequest) (*resolvedExecution, []b
 		return nil, classEnvelope(&errclass.Error{Class: errclass.ClassAuth, Message: "selected auth provider is not opencode-go"})
 	}
 	key := strings.TrimSpace(req.AuthAttributes["api_key"])
-	debugTrace("executor auth model=%s auth_id=%s provider=%s attr_api_key_present=%t attr_count=%d storage_json_bytes=%d", req.Model, req.AuthID, req.AuthProvider, key != "", len(req.AuthAttributes), len(req.StorageJSON))
+	orgID := strings.TrimSpace(req.AuthAttributes["org_id"])
+	if orgID == "" {
+		orgID = strings.TrimSpace(req.AuthAttributes["header:x-opencode-org-id"])
+	}
+	debugTrace("executor auth model=%s auth_id=%s provider=%s attr_api_key_present=%t attr_org_present=%t attr_count=%d storage_json_bytes=%d", req.Model, req.AuthID, req.AuthProvider, key != "", orgID != "", len(req.AuthAttributes), len(req.StorageJSON))
 	if key == "" {
 		return nil, classEnvelope(&errclass.Error{Class: errclass.ClassAuth, Message: "selected auth has no api key"})
 	}
@@ -74,7 +80,7 @@ func (m *Manager) resolveExecution(req executorRequest) (*resolvedExecution, []b
 			StatusCode: http.StatusNotFound,
 		})
 	}
-	return &resolvedExecution{cfg: cfg, rec: rec, key: key}, nil
+	return &resolvedExecution{cfg: cfg, rec: rec, key: key, orgID: orgID}, nil
 }
 
 // handleExecute implements executor.execute (non-stream). Stream-flagged
@@ -111,7 +117,7 @@ func (m *Manager) handleExecute(request []byte) ([]byte, error) {
 	resp, err := m.bridge.Do(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodPost,
 		URL:     url,
-		Headers: upstreamAuthHeaders(res.rec.Protocol, res.key, sessionID),
+		Headers: upstreamAuthHeaders(res.rec.Protocol, res.key, sessionID, res.orgID, res.cfg.UserAgent),
 		Body:    upstreamBody,
 	})
 	if err != nil {
@@ -156,7 +162,12 @@ func buildUpstreamRequestFrom(route catalog.Route, upstreamModel string, source 
 	return nil, errclass.Translation("unsupported route")
 }
 
-func upstreamAuthHeaders(route catalog.Route, key, sessionID string) http.Header {
+// upstreamAuthHeaders builds the credential and policy headers every upstream
+// request carries: the bearer (API key or OAuth access token), the resolved
+// opencode session, the org id that scopes an OAuth credential to its
+// workspace (very likely the free-tier/Zen entitlement a bare console key
+// lacks), and the User-Agent the opencode.ai console and inference API read.
+func upstreamAuthHeaders(route catalog.Route, key, sessionID, orgID, userAgent string) http.Header {
 	var h http.Header
 	if route == catalog.RouteMessages {
 		h = messages.AuthHeaders(key)
@@ -165,6 +176,12 @@ func upstreamAuthHeaders(route catalog.Route, key, sessionID string) http.Header
 		h = chatcompletions.AuthHeaders(key)
 	}
 	h.Set("x-opencode-session", sessionID)
+	if orgID != "" {
+		h.Set("x-opencode-org-id", orgID)
+	}
+	if userAgent != "" {
+		h.Set("User-Agent", userAgent)
+	}
 	return h
 }
 
@@ -436,7 +453,7 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 	st, _, id, err := m.bridge.DoStream(ctx, pluginapi.HTTPRequest{
 		Method:  http.MethodPost,
 		URL:     url,
-		Headers: upstreamAuthHeaders(res.rec.Protocol, res.key, sessionID),
+		Headers: upstreamAuthHeaders(res.rec.Protocol, res.key, sessionID, res.orgID, res.cfg.UserAgent),
 		Body:    upstreamBody,
 	})
 	debugTrace("executor stream DoStream status=%d upstreamID=%s err=%v", st, id, err)

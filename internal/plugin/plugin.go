@@ -60,11 +60,17 @@ type Manager struct {
 	// when no loop is running.
 	stop chan struct{}
 	done chan struct{}
+
+	// loginMu/logins hold in-flight OAuth device-authorizations, keyed by the
+	// opaque state token returned to the host. The device_code never crosses
+	// the wire as the state value, so it stays here.
+	loginMu sync.Mutex
+	logins  map[string]deviceLogin
 }
 
 // NewManager returns a dispatcher whose outbound traffic flows through bridge.
 func NewManager(bridge *HostBridge) *Manager {
-	return &Manager{bridge: bridge}
+	return &Manager{bridge: bridge, logins: make(map[string]deviceLogin)}
 }
 
 // HandleCall dispatches one RPC method and returns envelope bytes. Handler
@@ -100,7 +106,7 @@ func (m *Manager) HandleCall(method string, request []byte) (resp []byte, err er
 		if json.Unmarshal(request, &req) != nil {
 			return ErrEnvelope("invalid_request", "malformed auth parse request body"), nil
 		}
-		resp, err := (authProvider{}).ParseAuth(context.Background(), req)
+		resp, err := (authProvider{manager: m}).ParseAuth(context.Background(), req)
 		if err != nil {
 			return ErrEnvelope("auth_failure", err.Error()), nil
 		}
@@ -113,21 +119,27 @@ func (m *Manager) HandleCall(method string, request []byte) (resp []byte, err er
 		if json.Unmarshal(request, &req) != nil {
 			return ErrEnvelope("invalid_request", "malformed auth login request body"), nil
 		}
-		_, err := (authProvider{}).StartLogin(context.Background(), req.AuthLoginStartRequest)
-		return ErrEnvelope("unsupported", err.Error()), nil
+		resp, err := (authProvider{manager: m}).StartLogin(context.Background(), req.AuthLoginStartRequest)
+		if err != nil {
+			return ErrEnvelope("auth_failure", err.Error()), nil
+		}
+		return okEnvelope(resp), nil
 	case pluginabi.MethodAuthLoginPoll:
 		var req struct{ pluginapi.AuthLoginPollRequest }
 		if json.Unmarshal(request, &req) != nil {
 			return ErrEnvelope("invalid_request", "malformed auth poll request body"), nil
 		}
-		_, err := (authProvider{}).PollLogin(context.Background(), req.AuthLoginPollRequest)
-		return ErrEnvelope("unsupported", err.Error()), nil
+		resp, err := (authProvider{manager: m}).PollLogin(context.Background(), req.AuthLoginPollRequest)
+		if err != nil {
+			return ErrEnvelope("auth_failure", err.Error()), nil
+		}
+		return okEnvelope(resp), nil
 	case pluginabi.MethodAuthRefresh:
 		var req struct{ pluginapi.AuthRefreshRequest }
 		if json.Unmarshal(request, &req) != nil {
 			return ErrEnvelope("invalid_request", "malformed auth refresh request body"), nil
 		}
-		resp, err := (authProvider{}).RefreshAuth(context.Background(), req.AuthRefreshRequest)
+		resp, err := (authProvider{manager: m}).RefreshAuth(context.Background(), req.AuthRefreshRequest)
 		if err != nil {
 			return ErrEnvelope("auth_failure", err.Error()), nil
 		}
@@ -251,6 +263,16 @@ func pluginConfigFields() []pluginapi.ConfigField {
 			Name:        "allow-http",
 			Type:        pluginapi.ConfigFieldTypeBoolean,
 			Description: "Allow plain http:// URLs for local testing/mocking (default: false).",
+		},
+		{
+			Name:        "console-url",
+			Type:        pluginapi.ConfigFieldTypeString,
+			Description: "OpenCode console origin for OAuth device login and token refresh (default: https://opencode.ai/console).",
+		},
+		{
+			Name:        "user-agent",
+			Type:        pluginapi.ConfigFieldTypeString,
+			Description: "User-Agent sent on console and inference traffic (default: opencode/1.2.0).",
 		},
 	}
 }
