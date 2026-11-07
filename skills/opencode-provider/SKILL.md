@@ -46,11 +46,17 @@ quota cards (no plugin-owned management page).
   SCPM `easycli/deploy.sh` (names only — values never in this repo).
 - Auth records: `opencode-go-key-<sha256(api_key)>.json` in the CPA auth dir;
   reconciled on every register/reconfigure; removals use staged prove-then-delete.
+  OAuth Console login (device code flow) adds plugin-owned
+  `opencode-go-oauth-<sha256>.json` credentials (`access_token`/`refresh_token`/
+  `org_id`) that reconciliation never touches; `grant_type=refresh_token`
+  renews them, `invalid_grant` disables. The executor sends whichever bearer
+  the credential carries (API key or OAuth access token) and adds
+  `x-opencode-org-id` + `User-Agent` for OAuth. `executor.count_tokens` and
+  `executor.http_request` return `unsupported`.
 - Quota: v8 `QuotaProvider` native cards (`quota.identifier` / `describe` /
   `fetch` / `reset`); no plugin-owned management page. `quota.fetch` uses the
   credential attribute `plan`, else the first enabled plan; `quota.reset` is
-  `unsupported`. API-key only: auth login, `executor.count_tokens` and
-  `executor.http_request` return `unsupported`.
+  `unsupported`.
 - SDK/ABI: `github.com/router-for-me/CLIProxyAPI/v8 v8.0.0`, C ABI version 1,
   RPC schema 6; `cliproxy_plugin_init` rejects an ABI version mismatch;
   registration metadata must keep `GitHubRepository` set (host `validPlugin` gate).

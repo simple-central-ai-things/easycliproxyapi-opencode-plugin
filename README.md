@@ -59,6 +59,7 @@ This plugin exposes OpenCode Go as a single provider (`opencode-go`) backed by a
 - **Dynamic Catalog Discovery**: Fetches remote model catalogs with local fallback and custom route overrides.
 - **Multi-Key Auth Scheduling**: Pools multiple API keys with CLIProxyAPI's native scheduler for rotation, retries, and error cooldowns across all protocols.
 - **Config-authoritative credentials**: `api-keys` is the single source of truth. Every configured key is materialized as a CPA auth record; a key removed from the config has its record **deleted** (the auth file is unlinked, since the plugin ABI has no delete callback, and CPA's auth-directory watcher unregisters it), and putting the key back recreates it. Records the plugin cannot prove it created are never touched. See [Credential reconciliation](#credential-reconciliation).
+- **OAuth Console login (device code flow)**: Sign in to an opencode.ai Console account straight from the host login flow — no PKCE, no loopback callback port. The OAuth access token serves as the upstream bearer and carries the organization scope (`x-opencode-org-id`), which a plain console API key may lack. API-key credentials keep working alongside. See [OAuth Console login](#oauth-console-login).
 - **Quota Cards**: the v8 `QuotaProvider` interface renders rolling, weekly and monthly windows on the host's native credential cards. Quota values never affect routing, and the plugin ships no management page or management route.
 
 ## Layout
@@ -94,10 +95,17 @@ tests/live_*_test.go       live regression tests behind the `live` build tag (CI
 - **Env keys (names only):** the deployment feeds `OPENCODE_GO_API_KEY_1/2`
   from the SCSM `tag:easycli` export rendered by SCPM
   `easycli/deploy.sh` into the container `.env`.
-- **Auth records:** `opencode-go-key-<sha256(api_key)>.json` in the CPA auth
-  directory, reconciled against `api-keys` on every register/reconfigure
-  (see [Credential reconciliation](#credential-reconciliation)). API-key
-  only — no OAuth login flow.
+- **Auth records:** API keys materialize as
+  `opencode-go-key-<sha256(api_key)>.json` in the CPA auth directory,
+  reconciled against `api-keys` on every register/reconfigure (see
+  [Credential reconciliation](#credential-reconciliation)). OAuth console
+  logins (device code flow) add a second, plugin-owned credential type:
+  `opencode-go-oauth-<sha256>.json`, carrying `access_token` /
+  `refresh_token` / `org_id`; reconciliation never touches those records.
+  A credential is either an API key or an OAuth token — routed on the
+  `credential_type` attribute — and the executor sends whichever it is as
+  the upstream bearer, adding `x-opencode-org-id` and `User-Agent` for
+  OAuth credentials. See [OAuth Console login](#oauth-console-login).
 - **Quota:** v8 `QuotaProvider` (`quota.identifier` / `describe` / `fetch` /
   `reset`); `quota.reset` reports `unsupported`. `quota.fetch` uses the
   credential attribute `plan` when present, otherwise the first enabled plan.
@@ -258,6 +266,10 @@ plugins:
       request-timeout: "5m"              # upstream request timeout (default: "5m")
       max-response-bytes: 67108864       # max non-streaming response body size in bytes (default: 64 MiB)
       allow-http: false                  # allow http:// scheme for local mock/testing (default: false)
+
+      # OAuth console login + upstream identity
+      console-url: "https://opencode.ai/console"  # device-login / refresh origin (default shown)
+      user-agent: "opencode/1.2.0"                # sent on console + inference traffic (default shown)
 ```
 
 ### Legacy single-plan shorthand
@@ -290,6 +302,8 @@ plan that omits them.
 | `request-timeout` | `duration` | `5m` | Upstream HTTP request timeout. Must be positive. |
 | `max-response-bytes` | `int64` | `67108864` (64 MiB) | Maximum non-streaming response body size in bytes. |
 | `allow-http` | `bool` | `false` | When `true`, permits `http://` scheme in `base-url` / `catalog-url` for local testing. |
+| `console-url` | `string` | `https://opencode.ai/console` | Origin for OAuth device login (`/auth/device/code`, `/auth/device/token`) and token refresh. Trailing slash ignored. |
+| `user-agent` | `string` | `opencode/1.2.0` | User-Agent sent on console and inference traffic. The opencode.ai console reads it to evaluate member policy. |
 
 ## Credential reconciliation
 
@@ -313,6 +327,45 @@ Two limits are worth knowing:
 
 - **Bootstrap has no runtime index.** Until the host attaches its auth manager, `host.auth.list` reads the auth directory and returns neither `id` nor `auth_index`, so the raw record cannot be read and ownership cannot be proven. Creation still happens; a record whose state disagrees with the config is reported as deferred (`opencode-go credential reconciliation deferred for N record(s)`). CLIProxyAPI v8 applies the plugin config again once the auth manager is attached, which finishes the work at startup; a host that never reconfigures keeps the old record and the deferral line, and never has an index guessed for it.
 - **Credential housekeeping never takes the provider down.** A read, write or unlink that fails is reported as a `warn` (e.g. `credential reconciliation failed: …`, `opencode-go credential <hash> not removed: …`) and the plugin still registers its models; the next reconfigure retries. Failing registration would make the host drop the plugin and take every model of this provider off the air, which is worse than a credential that is one pass behind. A save that times out is an **unknown commit** — the host callback keeps running — so the bridge counts it as outstanding: the next reconciliation waits for it to settle before reading or writing, and if it does not settle inside the lifecycle deadline the pass reports that instead of a state the orphan could still overwrite.
+
+## OAuth Console login
+
+Beyond the configured `api-keys` pool, the plugin signs in to an **opencode.ai
+Console account** with the OAuth 2.0 **device authorization grant** (RFC 8628)
+— the same flow opencode's own console provider uses, which fits a headless
+plugin because it needs no PKCE and no local loopback callback port.
+
+Flow (all upstream traffic through the host http bridge):
+
+1. `auth.login.start` → `POST {console-url}/auth/device/code` with
+   `{"client_id":"opencode-cli","supports_org_scope":true}`. Returns the
+   `verification_uri_complete` URL for the operator to open (the user code is
+   embedded in it) plus an opaque `state` token.
+2. The operator opens the URL in a browser, signs in, and enters the user code.
+3. `auth.login.poll` → `POST {console-url}/auth/device/token` with
+   `grant_type=urn:ietf:params:oauth:grant-type:device_code`. Repeats until
+   `authorization_pending` clears, then fetches the account (`/api/user`) and
+   its organizations (`/api/orgs`) and persists a
+   `opencode-go-oauth-<sha256>.json` credential (`access_token`,
+   `refresh_token`, `expires_at`, `org_id`, account/email metadata).
+4. The host schedules a refresh from `NextRefreshAfter`; `auth.refresh`
+   redeems `grant_type=refresh_token`. A `400 invalid_grant` (revoked
+   session) disables the credential so the operator re-logins; transient
+   failures retry soon without dropping the token.
+
+Credential routing: the executor sends the credential's `api_key` attribute
+as the bearer — the API key for key records, the **access token** for OAuth
+records — and, for OAuth records only, adds `x-opencode-org-id` (the
+signed-in organization, which scopes the free-tier/Zen entitlement a bare
+`oc_sk_` key may lack) and the configured `User-Agent`. The inference base
+URL is unchanged: each plan's `base-url` still decides where models are
+routed, so an OAuth credential serves whichever plans are configured.
+
+Records stored in the **OpenCode CLI's native shape** (top-level
+`access`/`refresh` keys with the server under `metadata`, e.g. files written
+by `opencode auth login`) are recognized when their server points at
+opencode.ai, adopted as OAuth credentials, and rewritten into the plugin's
+canonical shape on the first refresh.
 
 ## Responses tool output compatibility
 

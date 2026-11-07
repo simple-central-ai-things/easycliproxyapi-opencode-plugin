@@ -80,8 +80,14 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
 - **Auth records**: each configured key is materialized as
   `opencode-go-key-<sha256(api_key)>.json` in the CPA auth directory; every
   register/reconfigure reconciles records against the config (create/enable,
-  staged prove-then-delete for removals). API-key only — auth login start/poll,
-  `executor.count_tokens` and `executor.http_request` all return `unsupported`.
+  staged prove-then-delete for removals). OAuth Console login (device code
+  flow) adds a second plugin-owned credential type —
+  `opencode-go-oauth-<sha256>.json` with `access_token`/`refresh_token`/
+  `org_id`, refreshed via `grant_type=refresh_token` — that reconciliation
+  never touches; a credential is either an API key or an OAuth token (routed
+  on the `credential_type` attribute), and the executor sends whichever as
+  the upstream bearer, adding `x-opencode-org-id` + `User-Agent` for OAuth.
+  `executor.count_tokens` and `executor.http_request` return `unsupported`.
 - **Quota**: v8 `QuotaProvider` (`quota.identifier` / `describe` / `fetch` /
   `reset`) rendered on the host's native credential cards; `quota.reset`
   reports `unsupported`. No plugin-owned management page or route.
