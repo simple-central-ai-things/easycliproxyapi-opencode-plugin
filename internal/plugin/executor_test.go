@@ -17,6 +17,7 @@ import (
 
 	"opencode-go-cliproxyapi/internal/adapter/shared"
 	"opencode-go-cliproxyapi/internal/catalog"
+	"opencode-go-cliproxyapi/internal/config"
 	"opencode-go-cliproxyapi/internal/errclass"
 )
 
@@ -233,8 +234,8 @@ func assertSessionHeaders(t *testing.T, wire map[string]any, wantSession, wantAu
 	if !ok {
 		t.Fatalf("headers missing: %v", wire)
 	}
-	if got := headers["X-Opencode-Session"].([]any)[0].(string); got != wantSession {
-		t.Fatalf("session = %q, want %q", got, wantSession)
+	if got := headers["X-Opencode-Session"].([]any)[0].(string); got != toSesFormat(wantSession) {
+		t.Fatalf("session = %q, want %q", got, toSesFormat(wantSession))
 	}
 	if got := headers["Authorization"]; wantAuth != "" {
 		if got.([]any)[0].(string) != wantAuth {
@@ -245,8 +246,8 @@ func assertSessionHeaders(t *testing.T, wire map[string]any, wantSession, wantAu
 	}
 	// The opencode.ai inference API and console read the User-Agent to decide
 	// which member policy applies, so we always send the configured agent.
-	if got := headers["User-Agent"].([]any)[0].(string); got != "opencode/1.2.0" {
-		t.Fatalf("User-Agent = %q, want opencode/1.2.0", got)
+	if got := headers["User-Agent"].([]any)[0].(string); got != config.DefaultUserAgent {
+		t.Fatalf("User-Agent = %q, want %q", got, config.DefaultUserAgent)
 	}
 	// The free-tier gate keys on the OpenCode client-identity headers, so the
 	// session id is echoed across every session-identity header, the client
@@ -259,8 +260,8 @@ func assertSessionHeaders(t *testing.T, wire map[string]any, wantSession, wantAu
 		t.Fatalf("X-Opencode-Project missing: %v", headers)
 	}
 	for _, name := range []string{"X-Opencode-Session-Id", "X-Session-Affinity", "X-Session-Id"} {
-		if got := headers[name].([]any)[0].(string); got != wantSession {
-			t.Fatalf("%s = %q, want %q", name, got, wantSession)
+		if got := headers[name].([]any)[0].(string); got != toSesFormat(wantSession) {
+			t.Fatalf("%s = %q, want %q", name, got, toSesFormat(wantSession))
 		}
 	}
 	// Request-scoped identity is still never forwarded to upstream.
@@ -425,7 +426,7 @@ func TestExecuteChatRoute(t *testing.T) {
 	if headers["Authorization"].([]any)[0].(string) != "Bearer "+testKey {
 		t.Fatalf("auth header wrong: %v", headers)
 	}
-	if headers["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if headers["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("session header wrong: %v", headers)
 	}
 	var upstream map[string]any
@@ -483,7 +484,7 @@ func TestExecuteMessagesRouteNativeClaudePassesThrough(t *testing.T) {
 	if headers["Anthropic-Version"].([]any)[0].(string) == "" {
 		t.Fatalf("Anthropic-Version missing: %v", headers)
 	}
-	if headers["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if headers["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("session header wrong: %v", headers)
 	}
 	if _, has := headers["Authorization"]; has {
@@ -543,7 +544,7 @@ func TestExecuteResponsesRouteNativePassesThrough(t *testing.T) {
 	if headers["Authorization"].([]any)[0].(string) != "Bearer "+testKey {
 		t.Fatalf("bearer missing: %v", headers)
 	}
-	if headers["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if headers["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("session header wrong: %v", headers)
 	}
 }
@@ -624,7 +625,7 @@ func TestExecuteStreamHappyPathClaudeSource(t *testing.T) {
 	}
 	streamWire := decodePayload(t, f.callsOf(pluginabi.MethodHostHTTPDoStream)[0])
 	streamHeaders := streamWire["headers"].(map[string]any)
-	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("stream session header wrong: %v", streamHeaders)
 	}
 	m.bridge.WaitForInFlight(5 * time.Second)
@@ -713,7 +714,7 @@ func TestExecuteStreamCloseAfterFinishFlushesTerminal(t *testing.T) {
 	}
 	streamWire := decodePayload(t, f.callsOf(pluginabi.MethodHostHTTPDoStream)[0])
 	streamHeaders := streamWire["headers"].(map[string]any)
-	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("stream session header wrong: %v", streamHeaders)
 	}
 	m.bridge.WaitForInFlight(5 * time.Second)
@@ -936,7 +937,7 @@ func TestExecuteStreamResponsesRouteNative(t *testing.T) {
 	}
 	streamWire := decodePayload(t, f.callsOf(pluginabi.MethodHostHTTPDoStream)[0])
 	streamHeaders := streamWire["headers"].(map[string]any)
-	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if streamHeaders["X-Opencode-Session"].([]any)[0].(string) != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("stream session header wrong: %v", streamHeaders)
 	}
 	m.bridge.WaitForInFlight(5 * time.Second)
@@ -1397,7 +1398,7 @@ func TestConvertNonStreamSeamBranches(t *testing.T) {
 	if got := catalog.JoinUpstreamURL("https://gw.test/", "/v1/responses"); got != "https://gw.test/responses" {
 		t.Fatalf("url join = %q", got)
 	}
-	if got := upstreamAuthHeaders(catalog.RouteChatCompletions, "k", "session", "org-1", "opencode/1.2.0"); got.Get("Authorization") != "Bearer k" || got.Get("x-opencode-session") != "session" || got.Get("x-opencode-org-id") != "org-1" || got.Get("User-Agent") != "opencode/1.2.0" {
+	if got := upstreamAuthHeaders(catalog.RouteChatCompletions, "k", "session", "org-1", "opencode/latest/2.2.6/cli"); got.Get("Authorization") != "Bearer k" || got.Get("x-opencode-session") != toSesFormat("session") || got.Get("x-opencode-org-id") != "org-1" || got.Get("User-Agent") != "opencode/latest/2.2.6/cli" {
 		t.Fatalf("bearer headers = %v", got)
 	}
 	if got := upstreamAuthHeaders(catalog.RouteChatCompletions, "k", "session", "", ""); got.Get("x-opencode-org-id") != "" || got.Get("User-Agent") != "" {

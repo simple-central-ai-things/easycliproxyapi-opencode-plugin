@@ -85,6 +85,22 @@ func TestAggregateChatCompletionsSSE(t *testing.T) {
 	}
 }
 
+func TestToSesFormat(t *testing.T) {
+	if got := toSesFormat("ses_abc123"); got != "ses_abc123" {
+		t.Errorf("ses_ passthrough = %q", got)
+	}
+	if got := toSesFormat(""); got != "" {
+		t.Errorf("empty = %q", got)
+	}
+	// non-ses input derives a stable ses_ id
+	if got := toSesFormat("derived:ctx:v1:0c3ab9"); !strings.HasPrefix(got, "ses_") || len(got) != 30 {
+		t.Errorf("derived = %q", got)
+	}
+	if a, b := toSesFormat("same"), toSesFormat("same"); a != b {
+		t.Errorf("not stable: %q vs %q", a, b)
+	}
+}
+
 func TestIsSSEBody(t *testing.T) {
 	if !isSSEBody([]byte("data: {\"a\":1}\n")) {
 		t.Error("should detect SSE")

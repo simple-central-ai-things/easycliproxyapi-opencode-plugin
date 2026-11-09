@@ -198,6 +198,22 @@ func isOpenCodeFreeModel(upstreamModel string) bool {
 	return strings.HasSuffix(strings.ToLower(upstreamModel), "-free")
 }
 
+// toSesFormat renders a session id in the OpenCode "ses_<id>" form that the
+// inference plane expects. Ids already in that form pass through unchanged;
+// otherwise a stable 26-char id is derived from the source so the same session
+// maps to the same ses_ id.
+func toSesFormat(sessionID string) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ""
+	}
+	if strings.HasPrefix(sessionID, "ses_") {
+		return sessionID
+	}
+	digest := sha256.Sum256([]byte("ses:" + sessionID))
+	return "ses_" + hex.EncodeToString(digest[:])[:26]
+}
+
 // upstreamAuthHeaders builds the credential and policy headers every upstream
 // request carries: the bearer (API key or OAuth access token), the resolved
 // opencode session, the org id that scopes an OAuth credential to its
@@ -216,11 +232,16 @@ func upstreamAuthHeaders(route catalog.Route, key, sessionID, orgID, userAgent s
 	// client identity headers, not just the TLS fingerprint or bearer, so a
 	// request must carry the full set: the session id echoed across every
 	// session-identity header, the client type, and a stable project id.
-	h.Set("x-opencode-session", sessionID)
-	if sessionID != "" {
-		h.Set("x-opencode-session-id", sessionID)
-		h.Set("x-session-affinity", sessionID)
-		h.Set("x-session-id", sessionID)
+	// The opencode.ai gate rejects session ids that are not in the OpenCode
+	// "ses_<id>" form (a content-derived id like "derived:ctx:v1:..." or a bare
+	// hash is refused with 429). Normalize the resolved session id to that form
+	// across every session-identity header.
+	ses := toSesFormat(sessionID)
+	h.Set("x-opencode-session", ses)
+	if ses != "" {
+		h.Set("x-opencode-session-id", ses)
+		h.Set("x-session-affinity", ses)
+		h.Set("x-session-id", ses)
 	}
 	h.Set("x-opencode-client", "cli")
 	if projectID := deriveProjectID(sessionID); projectID != "" {

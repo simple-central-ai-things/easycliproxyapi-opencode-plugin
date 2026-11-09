@@ -21,10 +21,12 @@ const (
 	DefaultRequestTimeout   = 5 * time.Minute
 	DefaultMaxResponseBytes = int64(67108864) // 64 MiB
 	// The opencode.ai console that OAuth device login talks to, and the
-	// User-Agent the console and inference API expect (the console reads the
-	// agent string to decide which member policy to evaluate).
+	// User-Agent the console and inference API expect. The agent string follows
+	// the OpenCode client form "opencode/<channel>/<version>/<name>"; the
+	// free-tier gate refuses the bare "opencode/1.2.0" form (426), so the
+	// default mirrors a real OpenCode CLI build.
 	DefaultConsoleURL = "https://opencode.ai/console"
-	DefaultUserAgent  = "opencode/1.2.0"
+	DefaultUserAgent  = "opencode/latest/2.2.6/cli"
 )
 
 type ModelPrefix struct {

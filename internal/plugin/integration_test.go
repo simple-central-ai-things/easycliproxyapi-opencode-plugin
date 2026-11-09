@@ -502,7 +502,7 @@ func TestChatNonStreamRoundTrip(t *testing.T) {
 	st.mu.Lock()
 	chatSession := st.lastChatSession
 	st.mu.Unlock()
-	if chatSession != "8fa02f28ce729c164657f5ab84cd1e38f690981132765ab45c6a71aeeb3dacd1" {
+	if chatSession != toSesFormat("8fa02f28ce729c164657f5ab84cd1e38f690981132765ab45c6a71aeeb3dacd1") {
 		t.Fatalf("mock x-opencode-session = %q", chatSession)
 	}
 	if upstream["model"] != "glm-5.2" {
@@ -634,7 +634,7 @@ func TestMessagesNonStreamRoundTrip(t *testing.T) {
 	if version == "" {
 		t.Fatal("anthropic-version header missing")
 	}
-	if session != "115ff558a2b5fa032b29f2f452673404575e82417d2843e0f410e890c3e85efa" {
+	if session != toSesFormat("115ff558a2b5fa032b29f2f452673404575e82417d2843e0f410e890c3e85efa") {
 		t.Fatalf("mock x-opencode-session = %q", session)
 	}
 	var upstream map[string]any
@@ -698,7 +698,7 @@ func TestResponsesNonStreamRoundTrip(t *testing.T) {
 	if auth != "Bearer sk-test-1" {
 		t.Fatalf("mock Authorization = %q", auth)
 	}
-	if session != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if session != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("mock x-opencode-session = %q", session)
 	}
 	var upstream map[string]any
@@ -775,7 +775,7 @@ func TestChatStreamingRoundTrip(t *testing.T) {
 	if !sawStream {
 		t.Fatal("mock did not see stream:true")
 	}
-	if session != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if session != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("mock x-opencode-session = %q", session)
 	}
 
@@ -819,7 +819,7 @@ func TestMessagesStreamingRoundTrip(t *testing.T) {
 	if !sawStream {
 		t.Fatal("mock did not see stream:true")
 	}
-	if session != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if session != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("mock x-opencode-session = %q", session)
 	}
 
@@ -854,7 +854,7 @@ func TestResponsesStreamingRoundTrip(t *testing.T) {
 	if !sawStream {
 		t.Fatal("mock did not see stream:true")
 	}
-	if session != "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4" {
+	if session != toSesFormat("8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4") {
 		t.Fatalf("mock x-opencode-session = %q", session)
 	}
 

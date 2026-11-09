@@ -272,7 +272,7 @@ func pluginConfigFields() []pluginapi.ConfigField {
 		{
 			Name:        "user-agent",
 			Type:        pluginapi.ConfigFieldTypeString,
-			Description: "User-Agent sent on console and inference traffic (default: opencode/1.2.0).",
+			Description: "User-Agent sent on console and inference traffic (default: opencode/latest/2.2.6/cli, the OpenCode client form the free-tier gate requires).",
 		},
 	}
 }
