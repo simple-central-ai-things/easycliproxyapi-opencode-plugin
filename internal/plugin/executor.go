@@ -7,6 +7,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -151,15 +152,31 @@ func buildUpstreamRequest(route catalog.Route, upstreamModel, sourceFormat strin
 // an already-owned SourceRequest, so the typed source representation decoded
 // for session derivation is reused here instead of being parsed again.
 func buildUpstreamRequestFrom(route catalog.Route, upstreamModel string, source *shared.SourceRequest, ts *pluginapi.ThinkingSupport) ([]byte, *errclass.Error) {
+	var body []byte
+	var eErr *errclass.Error
 	switch route {
 	case catalog.RouteChatCompletions:
-		return chatcompletions.BuildRequestFrom(upstreamModel, source, ts)
+		body, eErr = chatcompletions.BuildRequestFrom(upstreamModel, source, ts)
 	case catalog.RouteMessages:
-		return messages.BuildRequestFrom(upstreamModel, source, ts)
+		body, eErr = messages.BuildRequestFrom(upstreamModel, source, ts)
 	case catalog.RouteResponses:
-		return responses.BuildRequestFrom(upstreamModel, source, ts)
+		body, eErr = responses.BuildRequestFrom(upstreamModel, source, ts)
+	default:
+		return nil, errclass.Translation("unsupported route")
 	}
-	return nil, errclass.Translation("unsupported route")
+	if eErr != nil {
+		return nil, eErr
+	}
+	// Preserve native passthrough verbatim: when the translator forwarded the
+	// source body unchanged (undecodable input), re-serializing it for the env
+	// block would mangle a body the plugin promised to forward losslessly.
+	if bytes.Equal(body, source.Raw()) {
+		return body, nil
+	}
+	// The opencode.ai free-tier gate rejects requests that do not carry the
+	// OpenCode environment-context block, so ensure it is present in the system
+	// content. Idempotent — a genuine OpenCode client's request already has it.
+	return injectOpencodeEnv(route, body), nil
 }
 
 // upstreamAuthHeaders builds the credential and policy headers every upstream

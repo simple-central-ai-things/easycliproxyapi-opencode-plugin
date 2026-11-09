@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
@@ -61,6 +62,37 @@ func TestExecutorPreparationSharesOneSourceRequest(t *testing.T) {
 // Both lazy decodes are covered, not only the input-item one: an input-item
 // failure still parses as a typed envelope (Input is json.RawMessage), so a
 // native path that accidentally decoded the envelope would slip past the first
+// assertNativeInputPreserved verifies the responses "input" array survives
+// native passthrough verbatim, allowing for the leading env system message the
+// free-tier gate injection prepends.
+func assertNativeInputPreserved(t *testing.T, got, want []byte) {
+	t.Helper()
+	var gotDoc, wantDoc map[string]json.RawMessage
+	if err := json.Unmarshal(got, &gotDoc); err != nil {
+		t.Fatalf("decode got: %v", err)
+	}
+	if err := json.Unmarshal(want, &wantDoc); err != nil {
+		t.Fatalf("decode want: %v", err)
+	}
+	var gotInput []json.RawMessage
+	if err := json.Unmarshal(gotDoc["input"], &gotInput); err != nil {
+		t.Fatalf("decode got input: %v", err)
+	}
+	if len(gotInput) > 0 {
+		var first map[string]any
+		if err := json.Unmarshal(gotInput[0], &first); err == nil {
+			if role, _ := first["role"].(string); role == "system" {
+				gotInput = gotInput[1:]
+			}
+		}
+	}
+	gotInputJSON, _ := json.Marshal(gotInput)
+	wantInputJSON, _ := json.Marshal(wantDoc["input"])
+	if !bytes.Equal(gotInputJSON, wantInputJSON) {
+		t.Fatalf("native input not preserved:\n got: %s\nwant: %s", gotInputJSON, wantInputJSON)
+	}
+}
+
 // case. The second case defeats the envelope decode itself.
 func TestExecutorNativePassthroughWithSessionIdentitySkipsTypedDecode(t *testing.T) {
 	cases := []struct {
@@ -86,9 +118,11 @@ func TestExecutorNativePassthroughWithSessionIdentitySkipsTypedDecode(t *testing
 				t.Fatalf("passthrough with identity failed: %+v", env.Error)
 			}
 			wire := lastWire(t, f, pluginabi.MethodHostHTTPDo)
-			if got := wireBody(t, wire, "body"); !bytes.Equal(got, body) {
-				t.Fatalf("native body not preserved:\n got: %s\nwant: %s", got, body)
-			}
+			got := wireBody(t, wire, "body")
+			// The env block is prepended as a leading input system message for
+			// the free-tier gate; the native passthrough content itself must
+			// survive verbatim. Strip the leading system message and compare.
+			assertNativeInputPreserved(t, got, body)
 			assertSessionHeaders(t, wire, "canonical-native", "Bearer "+testKey)
 
 			m2, _ := newExecManager(t)

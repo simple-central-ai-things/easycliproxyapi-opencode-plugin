@@ -58,6 +58,12 @@ func TestResponsesToolArrayExecutor(t *testing.T) {
 				if err := json.Unmarshal(raw, &msgs); err != nil {
 					t.Fatal(err)
 				}
+				// The OpenCode env block is prepended as a leading system message
+				// for the free-tier gate; skip it to check tool pairing/order of
+				// the actual conversation.
+				if len(msgs) > 0 && msgs[0].Role == "system" {
+					msgs = msgs[1:]
+				}
 				if len(msgs) != 5 || len(msgs[1].Calls) != 2 || msgs[2].Role != "tool" || msgs[2].ID != msgs[1].Calls[0].ID || msgs[3].Role != "tool" || msgs[3].ID != msgs[1].Calls[1].ID || msgs[4].Role != "user" {
 					t.Fatalf("tool pairing/order: %s", raw)
 				}
@@ -107,8 +113,37 @@ func TestResponsesToolArrayNativeExecutor(t *testing.T) {
 				}
 			}
 			got := wireBody(t, lastWire(t, f, method), "body")
-			if !bytes.Equal(got, body) {
-				t.Fatalf("native tool output altered:\n got: %s\nwant: %s", got, body)
+			// The env block is prepended as a leading input system message for
+			// the free-tier gate; the native tool output itself must survive
+			// verbatim. Strip the leading system message and compare the rest.
+			var gotDoc map[string]json.RawMessage
+			if err := json.Unmarshal(got, &gotDoc); err != nil {
+				t.Fatalf("decode got: %v", err)
+			}
+			var gotInput []json.RawMessage
+			if err := json.Unmarshal(gotDoc["input"], &gotInput); err != nil {
+				t.Fatalf("decode got input: %v", err)
+			}
+			if len(gotInput) > 0 {
+				var first map[string]any
+				if err := json.Unmarshal(gotInput[0], &first); err == nil {
+					if role, _ := first["role"].(string); role == "system" {
+						gotInput = gotInput[1:]
+					}
+				}
+			}
+			var wantDoc map[string]json.RawMessage
+			if err := json.Unmarshal(body, &wantDoc); err != nil {
+				t.Fatalf("decode want: %v", err)
+			}
+			var wantInput []json.RawMessage
+			if err := json.Unmarshal(wantDoc["input"], &wantInput); err != nil {
+				t.Fatalf("decode want input: %v", err)
+			}
+			gotInputJSON, _ := json.Marshal(gotInput)
+			wantInputJSON, _ := json.Marshal(wantInput)
+			if !bytes.Equal(gotInputJSON, wantInputJSON) {
+				t.Fatalf("native tool output altered:\n got: %s\nwant: %s", gotInputJSON, wantInputJSON)
 			}
 		})
 	}
