@@ -379,7 +379,9 @@ func TestExecutorSessionInputsPropagateInBothModes(t *testing.T) {
 	if err != nil || !decodeEnv(t, resp).OK {
 		t.Fatalf("non-stream execute: %v %s", err, resp)
 	}
-	assertSessionHeaders(t, lastWire(t, f, pluginabi.MethodHostHTTPDo), "canonical-non-stream", "Bearer "+testKey)
+	// The raw inbound session header beats the namespaced canonical metadata,
+	// so the header value propagates upstream here.
+	assertSessionHeaders(t, lastWire(t, f, pluginabi.MethodHostHTTPDo), "header-non-stream", "Bearer "+testKey)
 
 	m, f = newStreamManager(t, streamScript{upstreamID: "session-up"})
 	resp, err = m.HandleCall("executor.execute_stream", execReqBodyWithSessionInputs("opencode-go/glm-5.3", "openai", body, true, testKey, "", "header-stream"))

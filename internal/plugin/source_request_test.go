@@ -167,7 +167,7 @@ func TestExecutorSessionIdentityMatrix(t *testing.T) {
 		header    string
 		want      string
 	}{
-		{"canonical", "canonical-identity", "header-identity", "canonical-identity"},
+		{"canonical", "canonical-identity", "header-identity", "header-identity"},
 		{"header", "", "header-identity", "header-identity"},
 	}
 	for _, mode := range []string{"non-stream", "stream"} {

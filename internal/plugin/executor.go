@@ -320,17 +320,23 @@ func resolveOpenCodeSessionID(req executorRequest) (string, *errclass.Error) {
 }
 
 // resolveOpenCodeSessionIDFrom applies the same precedence as
-// resolveOpenCodeSessionID but against a shared SourceRequest. Canonical
-// metadata and recognized session headers short-circuit before the content
+// resolveOpenCodeSessionID but against a shared SourceRequest. Recognized
+// session headers and canonical metadata short-circuit before the content
 // digest, so the fallback decode only runs when neither is present.
 func resolveOpenCodeSessionIDFrom(req executorRequest, source *shared.SourceRequest) (string, *errclass.Error) {
-	if sid, ok := req.Metadata["canonical_session_id"].(string); ok && sid != "" {
-		return sid, nil
-	}
+	// The explicit inbound session headers carry the caller's raw session
+	// value and are authoritative. The host builds its canonical_session_id
+	// metadata from those same headers but namespaces it with a harness
+	// prefix (e.g. "affinity:<id>", "codex:<id>"); the opencode.ai inference
+	// plane rejects prefixed or otherwise non-ses_ ids, so the raw header
+	// value must win over the namespaced metadata.
 	for _, name := range sessionHeaderNames {
 		if sid := req.Headers.Get(name); sid != "" {
 			return sid, nil
 		}
+	}
+	if sid, ok := req.Metadata["canonical_session_id"].(string); ok && sid != "" {
+		return sid, nil
 	}
 	return deriveOpenCodeSessionIDFrom(source)
 }
