@@ -133,7 +133,14 @@ func (m *Manager) handleExecute(request []byte) ([]byte, error) {
 	if int64(len(resp.Body)) > res.cfg.MaxResponseBytes {
 		return classEnvelope(errclass.Translation("response exceeds max-response-bytes")), nil
 	}
-	converted, eErr := convertNonStream(res.rec.Protocol, req.SourceFormat, resp.StatusCode, resp.Body)
+	// shapeOpencodeSession forces stream:true upstream, so a non-stream request
+	// receives an SSE body. Collapse it to a single chat-completions response so
+	// convertNonStream can translate it to the source format.
+	respBody := resp.Body
+	if res.rec.Protocol == catalog.RouteChatCompletions && isSSEBody(respBody) {
+		respBody = aggregateChatCompletionsSSE(respBody)
+	}
+	converted, eErr := convertNonStream(res.rec.Protocol, req.SourceFormat, resp.StatusCode, respBody)
 	if eErr != nil {
 		return classEnvelope(eErr), nil
 	}
@@ -168,15 +175,27 @@ func buildUpstreamRequestFrom(route catalog.Route, upstreamModel string, source 
 		return nil, eErr
 	}
 	// Preserve native passthrough verbatim: when the translator forwarded the
-	// source body unchanged (undecodable input), re-serializing it for the env
-	// block would mangle a body the plugin promised to forward losslessly.
+	// source body unchanged (undecodable input), re-serializing it would mangle
+	// a body the plugin promised to forward losslessly.
 	if bytes.Equal(body, source.Raw()) {
 		return body, nil
 	}
-	// The opencode.ai free-tier gate rejects requests that do not carry the
-	// OpenCode environment-context block, so ensure it is present in the system
-	// content. Idempotent — a genuine OpenCode client's request already has it.
-	return injectOpencodeEnv(route, body), nil
+	// The opencode.ai free-tier gate rejects requests that do not look like a
+	// genuine OpenCode session (harness preamble + <env> block, a non-empty
+	// tools array, and stream:true), so shape free-model bodies accordingly.
+	// Paid models are left untouched. Idempotent — a real OpenCode client's
+	// request already carries the preamble.
+	if isOpenCodeFreeModel(upstreamModel) {
+		body, _ = shapeOpencodeSession(route, body)
+	}
+	return body, nil
+}
+
+// isOpenCodeFreeModel reports whether the upstream model is an opencode.ai
+// free-tier model. opencode.ai names free models with a "-free" id suffix;
+// those are the ones gated behind the genuine-OpenCode session fingerprint.
+func isOpenCodeFreeModel(upstreamModel string) bool {
+	return strings.HasSuffix(strings.ToLower(upstreamModel), "-free")
 }
 
 // upstreamAuthHeaders builds the credential and policy headers every upstream
