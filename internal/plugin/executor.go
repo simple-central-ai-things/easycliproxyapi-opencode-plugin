@@ -175,7 +175,21 @@ func upstreamAuthHeaders(route catalog.Route, key, sessionID, orgID, userAgent s
 		// Chat Completions and Responses endpoints are OpenAI-style bearer.
 		h = chatcompletions.AuthHeaders(key)
 	}
+	// Mirror the header set the real OpenCode CLI sends to the inference API
+	// (captured from `opencode run`). The free-tier gate keys on the OpenCode
+	// client identity headers, not just the TLS fingerprint or bearer, so a
+	// request must carry the full set: the session id echoed across every
+	// session-identity header, the client type, and a stable project id.
 	h.Set("x-opencode-session", sessionID)
+	if sessionID != "" {
+		h.Set("x-opencode-session-id", sessionID)
+		h.Set("x-session-affinity", sessionID)
+		h.Set("x-session-id", sessionID)
+	}
+	h.Set("x-opencode-client", "cli")
+	if projectID := deriveProjectID(sessionID); projectID != "" {
+		h.Set("x-opencode-project", projectID)
+	}
 	if orgID != "" {
 		h.Set("x-opencode-org-id", orgID)
 	}
@@ -183,6 +197,16 @@ func upstreamAuthHeaders(route catalog.Route, key, sessionID, orgID, userAgent s
 		h.Set("User-Agent", userAgent)
 	}
 	return h
+}
+
+// deriveProjectID returns a stable 40-hex project identifier for the session,
+// matching the length OpenCode's client emits for x-opencode-project.
+func deriveProjectID(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte("project:" + sessionID))
+	return hex.EncodeToString(digest[:])[:40]
 }
 
 const emptyOpenCodeSessionID = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

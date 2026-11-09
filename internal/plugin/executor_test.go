@@ -248,7 +248,23 @@ func assertSessionHeaders(t *testing.T, wire map[string]any, wantSession, wantAu
 	if got := headers["User-Agent"].([]any)[0].(string); got != "opencode/1.2.0" {
 		t.Fatalf("User-Agent = %q, want opencode/1.2.0", got)
 	}
-	for _, forbidden := range []string{"X-Opencode-Client", "X-Opencode-Request", "X-Opencode-Project"} {
+	// The free-tier gate keys on the OpenCode client-identity headers, so the
+	// session id is echoed across every session-identity header, the client
+	// type is asserted, and a stable project id is derived. These were
+	// previously withheld from upstream; the gate requires them now.
+	if got := headers["X-Opencode-Client"].([]any)[0].(string); got != "cli" {
+		t.Fatalf("X-Opencode-Client = %q, want cli", got)
+	}
+	if _, ok := headers["X-Opencode-Project"]; !ok {
+		t.Fatalf("X-Opencode-Project missing: %v", headers)
+	}
+	for _, name := range []string{"X-Opencode-Session-Id", "X-Session-Affinity", "X-Session-Id"} {
+		if got := headers[name].([]any)[0].(string); got != wantSession {
+			t.Fatalf("%s = %q, want %q", name, got, wantSession)
+		}
+	}
+	// Request-scoped identity is still never forwarded to upstream.
+	for _, forbidden := range []string{"X-Opencode-Request"} {
 		if _, ok := headers[forbidden]; ok {
 			t.Fatalf("forbidden header %q present: %v", forbidden, headers)
 		}
