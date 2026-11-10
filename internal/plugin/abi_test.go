@@ -10,7 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
-// This file pins the binary/ABI surface the deployed v2.3.0 plugin speaks:
+// This file pins the binary/ABI surface the released plugin speaks (v2.4.0, built on the v2.3.0 ABI):
 // the CLIProxyAPI v8 native ABI version, RPC schema version, registration
 // identity/capabilities, quota-provider card surface and the plan-aware
 // dispatch. Everything here runs offline against synthetic host callbacks.
@@ -84,8 +84,8 @@ func TestABIRegistrationIdentityAndCapabilities(t *testing.T) {
 	if reg.Metadata.Name != "easycliproxyapi-opencode-provider" {
 		t.Fatalf("plugin id = %q, want the SCPM config-contract identity", reg.Metadata.Name)
 	}
-	if reg.Metadata.Version != "2.3.0" {
-		t.Fatalf("version = %q, want 2.3.0 (deployed artifact)", reg.Metadata.Version)
+	if reg.Metadata.Version != "2.4.0" {
+		t.Fatalf("version = %q, want 2.4.0 (released artifact)", reg.Metadata.Version)
 	}
 	if reg.Metadata.GitHubRepository != "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin" {
 		t.Fatalf("github repository = %q", reg.Metadata.GitHubRepository)
@@ -99,7 +99,7 @@ func TestABIRegistrationIdentityAndCapabilities(t *testing.T) {
 	}
 	raw, _ := json.Marshal(caps)
 	if strings.Contains(string(raw), "management_api") || strings.Contains(string(raw), "request_translator") {
-		t.Fatalf("v2.3.0 must advertise only provider/auth/executor/quota: %s", raw)
+		t.Fatalf("the release must advertise only provider/auth/executor/quota: %s", raw)
 	}
 	// Config-field surface must expose the plan schema, not just base-url.
 	fields := map[string]pluginapi.ConfigFieldType{}

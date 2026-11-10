@@ -10,6 +10,16 @@ Nothing in this file is host-specific: no deployment host, container paths,
 keys, or LAN addresses. Every value below is a public contract or a synthetic
 example.
 
+## v2.4.0 builds on this surface
+
+The re-derived v2.3.0 surface above remains the ABI and config baseline. The
+v2.4.0 release adds free-tier session fingerprinting (genuine-OpenCode-shaped
+bodies, client-identity headers, exact-format session ids), OAuth device-code
+console login as a second credential type, and native-envelope catalog limits.
+None of these change the wire ABI, the registration surface, the artifact
+filename, or the `plans:`/`api-keys` config contract established here; only the
+reported version moves 2.3.0 -> 2.4.0.
+
 ## What "matches the deployed v2.3.0" means here
 
 | Surface | Deployed (canonical) | This source |

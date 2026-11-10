@@ -5,8 +5,35 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
-## Unreleased (2026-11-06)
+## v2.4.0 — 2026-11-10 (free-tier session fingerprint + OAuth console login)
 
+Builds on the re-derived v2.3.0 deployed surface (below) without changing its
+wire ABI or config contract. This release lets the opencode.ai free-tier models
+served through the gateway clear the free-tier gate, adds OAuth device-code
+console login as a second credential type, and reads the catalog limits from
+OpenCode's native envelope.
+
+- **Free-tier session fingerprint:** opencode.ai gates its free models on the
+  request looking like a genuine OpenCode session. For records routed to the free
+  `/inference/` plane, the plugin now shapes the upstream body (harness preamble
+  including the Code Mode section and the `<env>` block, a non-empty tools array,
+  and `stream:true`), sends the OpenCode client-identity header set, uses the
+  client-form User-Agent, and generates the session id in the exact OpenCode format
+  (`ses_` + 12 hex descending-timestamp chars + 14 base62 random chars). An explicit
+  inbound session header is honored verbatim over the namespaced host metadata; a
+  non-stream request that forces `stream:true` upstream has its SSE response
+  collapsed back into a single chat-completions document. Paid plans are untouched.
+  Free-tier membership is decided by the route (the plan base URL), not the model id
+  suffix, so suffix-less free models (big-pickle) are shaped too.
+- **OAuth device-code console login:** a second, plugin-owned credential type
+  (`opencode-go-oauth-<sha256>.json`) signs in through the console device-code flow
+  and routes org-scoped inference with `x-opencode-org-id` + the client User-Agent.
+  Reconciliation never touches OAuth records; a credential is either an API key or
+  an OAuth token (routed on the `credential_type` attribute), and the executor sends
+  whichever as the upstream bearer.
+- **Catalog limits from the native envelope:** context/output limits are read from
+  OpenCode's `{"context":N,"output":M}` envelope instead of the flat fields it does
+  not emit, so catalog records carry real limits.
 - **Identity rename:** the runtime plugin name/id is now `easycliproxyapi-opencode-provider`,
   matching the library basename and the sibling provider plugins' convention
   (`easycliproxyapi-{commandcode,mistral,chatgpt}-provider`). Previously the panel
@@ -14,7 +41,18 @@ the running history. Releases before v2.3.0 are reachable through the git tags
   already `easycliproxyapi-opencode-provider`, so the tile read inconsistently next to
   the other plugins. Host binding is by the `.so` basename (unchanged), so the EasyCLI
   config key and model prefix (`opencode-go`) are untouched; only the reported name
-  changed. Version remains 2.3.0 pending a tagged release.
+  changed.
+- **CI:** same-repository PR checks route to the dedicated rootless org runner.
+
+### Upgrade notes
+
+- No config migration: the `plans:`/`api-keys` schema is unchanged. A new free plan
+  (`base-url` on the `/inference/` plane) is opt-in; until one is declared, only the
+  paid plans are routable, exactly as in v2.3.0.
+- Free models on the `/inference/` plane additionally need a `route-overrides` entry
+  (chat-completions) per model in the EasyCLI config to be routable.
+- The wire ABI, registration surface and artifact filename are unchanged; the
+  reported version moves 2.3.0 -> 2.4.0.
 
 ## v2.3.0 — 2026-11-04 (re-derived deployed surface, tag-ready)
 

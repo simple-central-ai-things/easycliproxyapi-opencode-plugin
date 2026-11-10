@@ -10,7 +10,7 @@ package loadsmoke
 // No EasyCLI binary, deploy host, network or credential is involved. Beyond
 // identity and config reconcile, the assertions that matter are:
 //   - the plugin publishes its pinned identity (`easycliproxyapi-opencode-provider`,
-//     2.3.0), its plan-aware config surface and native capabilities;
+//     2.4.0), its plan-aware config surface and native capabilities;
 //   - a configured key is materialized into the host's credential store, and
 //     a reconfigure observes the same record through the management list/get
 //     path without rewriting it;
@@ -255,7 +255,7 @@ catalog:
 		t.Fatalf("schema_version = %d, want %d", registration.SchemaVersion, pluginabi.SchemaVersion)
 	}
 	if registration.Metadata.Name != pluginID ||
-		registration.Metadata.Version != "2.3.0" ||
+		registration.Metadata.Version != "2.4.0" ||
 		registration.Metadata.GitHubRepository != "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin" {
 		t.Fatalf("identity = %+v", registration.Metadata)
 	}

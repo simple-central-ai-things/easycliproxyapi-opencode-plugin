@@ -1,75 +1,51 @@
 ## What's Changed
 
-### Re-derived v2.3.0 on the CLIProxyAPI v8 plugin SDK
+### v2.4.0 — free-tier session fingerprint + OAuth console login
 
-This release replaces the stale v1.0.3 tree with a re-derivation of the deployed
-v2.3.0 plugin surface. See `PROVENANCE.md` for the full evidence chain.
+`easycliproxyapi-opencode-provider` v2.4.0 builds on the re-derived v2.3.0
+surface without changing its wire ABI, registration metadata, artifact filename
+or `plans:`/`api-keys` config contract. It adds two credential/capability
+areas and one catalog fix. See `CHANGELOG.md` and `PROVENANCE.md`.
 
-- **SDK generation:** `github.com/router-for-me/CLIProxyAPI/v8 v8.0.0` (RPC
-  schema 6). The native C ABI shape is unchanged (`ABIVersion == 1`), so the
-  CGO glue keeps exporting `cliproxy_plugin_init`, `cliproxyPluginCall`,
-  `cliproxyPluginFree` and `cliproxyPluginShutdown`.
-- **Config schema:** new `plans:` list. Each enabled plan owns a base URL, a
-  catalog URL (`{base-url}/models` by default) and its own model prefix
-  (`go` → `opencode-go`, `zen` → `opencode-zen`). One `api-keys` pool serves
-  every plan. Legacy single-plan configs (`base-url` + `model-prefix`) still
-  load as one implicit plan named `go`.
-- **Per-plan catalog and routing:** every catalog refresh fetches each enabled
-  plan's catalog; a disabled plan is neither fetched nor routable. Each model
-  record carries its plan name and base URL, so execution joins the endpoint
-  onto the plan's own upstream.
-- **Quota surface:** the plugin-owned management page and `quota-usage` route
-  are gone. Quota now renders on the host's native credential cards through the
-  v8 `QuotaProvider` interface (`quota.identifier` / `describe` / `fetch` /
-  `reset`), with the rolling, weekly and monthly windows normalized into
-  buckets. `quota.reset` reports `unsupported`.
-- **Quota card parity:** the card shape matches the sibling
-  `easycliproxyapi-commandcode-provider` plugin — subscription plan label, a
-  plan summary metric and one bucket per reported window. The credential key
-  resolves from the parsed `api_key` attribute and falls back to host-managed
-  `metadata`; remaining fractions are clamped to `0..1`; a window the upstream
-  never described is omitted instead of being drawn as a full bar.
-- **Identity:** runtime plugin id stays `easycliproxyapi-opencode-provider` (the EasyCLI
-  config-contract key); the shared library is published as
-  `easycliproxyapi-opencode-provider` to match the deployed artifact. Version
-  is `2.3.0`; `registry.json` and the repository URL now point at this
-  repository instead of the upstream fork.
-- **Release prep:** `pluginVersion`, `registry.json` and the release docs are
-  in lockstep at `2.3.0`, and an offline test enforces that lockstep so a
-  version bump cannot drift. The annotated `v2.3.0` tag and the GitHub release
-  are a separate operator step; CI builds the release matrix and publishes this
-  file as the release body on a `v*` tag push.
+- **opencode.ai free-tier models through the gateway.** opencode.ai gates its
+  free models on the request looking like a genuine OpenCode session. For
+  records routed to the free `/inference/` plane, the plugin now:
+  - shapes the upstream body into the genuine-OpenCode session fingerprint
+    (harness preamble including the `# Code Mode` section and the `<env>`
+    environment-context block, a non-empty `tools` array, and `stream:true`);
+  - sends the OpenCode client-identity header set and the client-form
+    User-Agent;
+  - generates the session id in the exact OpenCode client format —
+    `ses_` + 12 lowercase-hex descending-timestamp chars + 14 base62 random
+    chars — so a session id the gate would otherwise reject is never sent;
+  - honors an explicit inbound session header verbatim (over the host's
+    namespaced session metadata), and collapses the forced-upstream `stream:true`
+    SSE response back into a single chat-completions document for non-stream
+    callers.
+  Free-tier membership is decided by the **route** (the plan base URL on the
+  `/inference/` plane), not the model-id suffix, so suffix-less free models are
+  shaped too. Paid plans are untouched.
 
-### Tests (offline, no network, no secrets)
+- **OAuth device-code console login** as a second, plugin-owned credential
+  type (`opencode-go-oauth-<sha256>.json`). It signs in through the console
+  device-code flow and routes org-scoped inference with `x-opencode-org-id`
+  plus the client User-Agent. Reconciliation never touches OAuth records — a
+  credential is either an API key or an OAuth token (routed on the
+  `credential_type` attribute), and the executor sends whichever as the
+  upstream bearer.
 
-- ABI contract pins: ABI version, RPC schema version, registration identity,
-  version, repository and capability set (including `quota_provider`, excluding
-  `management_api`).
-- Plan schema: template-shaped YAML, per-plan prefixes, disabled plans,
-  duplicate/ambiguous plan rejection and legacy single-plan compatibility.
-- Plan-aware catalog: per-plan refresh, stale retention for one failing plan,
-  fail-closed for an all-plan outage, and per-record upstream base URLs.
-- Quota card surface: identifier/describe/fetch/reset envelopes, normalized
-  response shape, plan selection by credential attribute, credential
-  redaction and upstream-failure classification; parity with the sibling
-  plugin on the metadata key fallback, remaining-fraction clamping and
-  omission of unreported windows.
-- Release identity: `registry.json` (plugin id, version, repository) and the
-  release docs are pinned to the `plugin.go` constants, so a version bump
-  cannot drift from the docs.
-- Auth records: the canonical record written by reconciliation parses back
-  through `auth.parse`.
+- **Catalog limits from OpenCode's native envelope.** Context/output limits are
+  read from the `{"context":N,"output":M}` envelope instead of flat fields
+  OpenCode does not emit, so catalog records carry real limits.
 
-### Upgrade Notes
+### Notes
 
-- Config migration: move `base-url`/`model-prefix` under a `plans:` entry (or
-  keep them as the legacy single-plan shorthand). `api-keys` is unchanged.
-- The model names are unchanged for the `go` plan; a second enabled plan adds
-  its own prefix namespace.
-- Credential records (`opencode-go-key-<sha256(api_key)>.json`) are unchanged;
-  reconciliation still creates, re-enables and removes them from `api-keys`.
-- This repository is source-only for this release. Do not overwrite a running
-  deployment without comparing this surface against the live plugin's
-  registration log first.
-
-**Full Changelog**: https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin/compare/v1.0.3...v2.3.0
+- No config migration: the `plans:`/`api-keys` schema is unchanged. Declaring a
+  free plan (`base-url` on the `/inference/` plane) is opt-in; until one is
+  declared, only the paid plans are routable, exactly as in v2.3.0.
+- Free models on the `/inference/` plane additionally need a per-model
+  `route-overrides` entry (chat-completions) in the EasyCLI config to be
+  routable.
+- The reported version moves `2.3.0` -> `2.4.0`; the wire ABI, registration
+  surface and the `easycliproxyapi-opencode-provider.so` artifact name are
+  unchanged.
