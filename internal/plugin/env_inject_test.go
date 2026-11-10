@@ -9,15 +9,22 @@ import (
 	"opencode-go-cliproxyapi/internal/catalog"
 )
 
-func TestIsOpenCodeFreeModel(t *testing.T) {
-	if !isOpenCodeFreeModel("inkling-2-small-free") {
+func TestIsFreeTierModel(t *testing.T) {
+	if !isFreeTierModel("inkling-2-small-free", "") {
 		t.Error("inkling-2-small-free should be free")
 	}
-	if !isOpenCodeFreeModel("GLM-5.3-flash-FREE") {
+	if !isFreeTierModel("GLM-5.3-flash-FREE", "") {
 		t.Error("case-insensitive -free suffix should be free")
 	}
-	if isOpenCodeFreeModel("gpt-6-luna") {
+	if isFreeTierModel("gpt-6-luna", "") {
 		t.Error("gpt-6-luna should not be free")
+	}
+	// big-pickle has no -free suffix but rides the inference plane.
+	if !isFreeTierModel("big-pickle", "https://opencode.ai/inference/openai/v1") {
+		t.Error("inference-plane model must be shaped even without -free suffix")
+	}
+	if isFreeTierModel("gpt-6-luna", "https://opencode.ai/zen/go/v1") {
+		t.Error("zen/go plane must stay untouched")
 	}
 }
 

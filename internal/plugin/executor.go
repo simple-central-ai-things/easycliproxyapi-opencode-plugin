@@ -106,7 +106,7 @@ func (m *Manager) handleExecute(request []byte) ([]byte, error) {
 		return classEnvelope(eErr), nil
 	}
 	debugTrace("executor session mode=%s source_format=%s x_opencode_session=%s fallback=%t", "non-stream", req.SourceFormat, sessionID, sessionID == emptyOpenCodeSessionID)
-	upstreamBody, eErr := buildUpstreamRequestFrom(res.rec.Protocol, res.rec.UpstreamID, source, res.rec.Thinking)
+	upstreamBody, eErr := buildUpstreamRequestFrom(res.rec.Protocol, res.rec.UpstreamID, res.rec.BaseURL, source, res.rec.Thinking)
 	if eErr != nil {
 		return classEnvelope(eErr), nil
 	}
@@ -153,13 +153,13 @@ func (m *Manager) handleExecute(request []byte) ([]byte, error) {
 // paths use buildUpstreamRequestFrom so one decode serves both session
 // derivation and conversion.
 func buildUpstreamRequest(route catalog.Route, upstreamModel, sourceFormat string, sourceBody []byte, ts *pluginapi.ThinkingSupport) ([]byte, *errclass.Error) {
-	return buildUpstreamRequestFrom(route, upstreamModel, shared.NewSourceRequest(sourceFormat, sourceBody), ts)
+	return buildUpstreamRequestFrom(route, upstreamModel, "", shared.NewSourceRequest(sourceFormat, sourceBody), ts)
 }
 
 // buildUpstreamRequestFrom translates the request for the selected route from
 // an already-owned SourceRequest, so the typed source representation decoded
 // for session derivation is reused here instead of being parsed again.
-func buildUpstreamRequestFrom(route catalog.Route, upstreamModel string, source *shared.SourceRequest, ts *pluginapi.ThinkingSupport) ([]byte, *errclass.Error) {
+func buildUpstreamRequestFrom(route catalog.Route, upstreamModel, baseURL string, source *shared.SourceRequest, ts *pluginapi.ThinkingSupport) ([]byte, *errclass.Error) {
 	var body []byte
 	var eErr *errclass.Error
 	switch route {
@@ -186,16 +186,21 @@ func buildUpstreamRequestFrom(route catalog.Route, upstreamModel string, source 
 	// tools array, and stream:true), so shape free-model bodies accordingly.
 	// Paid models are left untouched. Idempotent — a real OpenCode client's
 	// request already carries the preamble.
-	if isOpenCodeFreeModel(upstreamModel) {
+	if isFreeTierModel(upstreamModel, baseURL) {
 		body, _ = shapeOpencodeSession(route, body)
 	}
 	return body, nil
 }
 
-// isOpenCodeFreeModel reports whether the upstream model is an opencode.ai
-// free-tier model. opencode.ai names free models with a "-free" id suffix;
-// those are the ones gated behind the genuine-OpenCode session fingerprint.
-func isOpenCodeFreeModel(upstreamModel string) bool {
+// isFreeTierModel reports whether the upstream model is served from the
+// opencode.ai free tier, the plane gated behind the genuine-OpenCode session
+// fingerprint. Membership is decided by the route: free-plan models live on
+// the inference plane, and some free model ids carry no "-free" suffix
+// (big-pickle), so the suffix alone is not authoritative.
+func isFreeTierModel(upstreamModel, baseURL string) bool {
+	if strings.Contains(baseURL, "/inference/") {
+		return true
+	}
 	return strings.HasSuffix(strings.ToLower(upstreamModel), "-free")
 }
 
@@ -572,7 +577,7 @@ func (m *Manager) executeStream(req executorRequest) ([]byte, error) {
 		return classEnvelope(eErr), nil
 	}
 	debugTrace("executor session mode=%s source_format=%s x_opencode_session=%s fallback=%t", "stream", req.SourceFormat, sessionID, sessionID == emptyOpenCodeSessionID)
-	upstreamBody, eErr := buildUpstreamRequestFrom(res.rec.Protocol, res.rec.UpstreamID, source, res.rec.Thinking)
+	upstreamBody, eErr := buildUpstreamRequestFrom(res.rec.Protocol, res.rec.UpstreamID, res.rec.BaseURL, source, res.rec.Thinking)
 	if eErr != nil {
 		return classEnvelope(eErr), nil
 	}

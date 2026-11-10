@@ -35,7 +35,7 @@ func TestExecutorPreparationSharesOneSourceRequest(t *testing.T) {
 		t.Fatalf("session = %q (%v), want %q", gotSession, eErr, wantSession)
 	}
 
-	gotBody, eErr := buildUpstreamRequestFrom(catalog.RouteChatCompletions, "deepseek-v4-pro", source, nil)
+	gotBody, eErr := buildUpstreamRequestFrom(catalog.RouteChatCompletions, "deepseek-v4-pro", "", source, nil)
 	if eErr != nil {
 		t.Fatalf("build: %v", eErr)
 	}

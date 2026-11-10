@@ -129,7 +129,7 @@ func BenchmarkRequestPreparation(b *testing.B) {
 				if _, eErr := resolveOpenCodeSessionIDFrom(req, source); eErr != nil {
 					b.Fatal(eErr)
 				}
-				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, source, nil)
+				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, "", source, nil)
 				if eErr != nil {
 					b.Fatal(eErr)
 				}
@@ -166,7 +166,7 @@ func BenchmarkRequestPreparationIdentity(b *testing.B) {
 					b.Fatal(eErr)
 				}
 				benchSinkString = sid
-				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, source, nil)
+				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, "", source, nil)
 				if eErr != nil {
 					b.Fatal(eErr)
 				}
@@ -198,7 +198,7 @@ func BenchmarkRequestPreparationSize(b *testing.B) {
 				if _, eErr := resolveOpenCodeSessionIDFrom(req, source); eErr != nil {
 					b.Fatal(eErr)
 				}
-				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, source, nil)
+				out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, "", source, nil)
 				if eErr != nil {
 					b.Fatal(eErr)
 				}
@@ -223,7 +223,7 @@ func BenchmarkRequestPreparationSharedVsSplit(b *testing.B) {
 			if _, eErr := resolveOpenCodeSessionIDFrom(req, source); eErr != nil {
 				b.Fatal(eErr)
 			}
-			out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, source, nil)
+			out, eErr := buildUpstreamRequestFrom(leg.route, leg.model, "", source, nil)
 			if eErr != nil {
 				b.Fatal(eErr)
 			}
