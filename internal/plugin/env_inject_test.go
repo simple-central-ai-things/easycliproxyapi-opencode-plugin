@@ -92,12 +92,35 @@ func TestToSesFormat(t *testing.T) {
 	if got := toSesFormat(""); got != "" {
 		t.Errorf("empty = %q", got)
 	}
-	// non-ses input derives a stable ses_ id
-	if got := toSesFormat("derived:ctx:v1:0c3ab9"); !strings.HasPrefix(got, "ses_") || len(got) != 30 {
-		t.Errorf("derived = %q", got)
+	// non-ses input produces the exact OpenCode client id shape and is stable:
+	// ses_ + 12 lowercase hex (descending timestamp) + 14 base62 chars.
+	got := toSesFormat("derived:ctx:v1:0c3ab9")
+	if !strings.HasPrefix(got, "ses_") || len(got) != 30 {
+		t.Fatalf("derived = %q, want ses_+26 chars", got)
+	}
+	for _, c := range got[4:16] {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			t.Fatalf("time part not hex: %q", got)
+		}
+	}
+	for _, c := range got[16:] {
+		if !strings.ContainsRune(sesBase62, c) {
+			t.Fatalf("random part not base62: %q", got)
+		}
 	}
 	if a, b := toSesFormat("same"), toSesFormat("same"); a != b {
 		t.Errorf("not stable: %q vs %q", a, b)
+	}
+	// distinct sources map to distinct generated ids
+	if a, b := toSesFormat("one"), toSesFormat("two"); a == b {
+		t.Errorf("collision: %q", a)
+	}
+	// the generated time part decodes to a current-ish descending timestamp
+	// (~now*4096): the leading byte must sit in the same high region as a
+	// directly generated id rather than a fabricated constant like 0xff.
+	direct := newOpenCodeSessionID()
+	if direct[4:6] == "ff" || got[4:6] == "ff" {
+		t.Errorf("implausible time byte: direct=%q mapped=%q", direct, got)
 	}
 }
 

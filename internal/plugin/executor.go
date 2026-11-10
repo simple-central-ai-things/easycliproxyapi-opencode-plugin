@@ -9,6 +9,7 @@ package plugin
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -198,10 +199,14 @@ func isOpenCodeFreeModel(upstreamModel string) bool {
 	return strings.HasSuffix(strings.ToLower(upstreamModel), "-free")
 }
 
-// toSesFormat renders a session id in the OpenCode "ses_<id>" form that the
-// inference plane expects. Ids already in that form pass through unchanged;
-// otherwise a stable 26-char id is derived from the source so the same session
-// maps to the same ses_ id.
+// toSesFormat renders a session id in the exact form the OpenCode client
+// produces and the inference plane validates: "ses_" + 12 lowercase hex
+// chars encoding ~(unix_ms*0x1000+counter) (a descending, sortable timestamp)
+// + 14 base62 random chars. Ids already in that form pass through unchanged.
+// The gate rejects ids whose time part is not a valid current-ish descending
+// timestamp, so arbitrary hashes or random hex never pass; a derived id is
+// mapped to a generated id once and cached, keeping one stable ses_ per
+// source for the process lifetime.
 func toSesFormat(sessionID string) string {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -210,8 +215,47 @@ func toSesFormat(sessionID string) string {
 	if strings.HasPrefix(sessionID, "ses_") {
 		return sessionID
 	}
-	digest := sha256.Sum256([]byte("ses:" + sessionID))
-	return "ses_" + hex.EncodeToString(digest[:])[:26]
+	if cached, ok := openCodeSesCache.Load(sessionID); ok {
+		return cached.(string)
+	}
+	id := newOpenCodeSessionID()
+	openCodeSesCache.Store(sessionID, id)
+	return id
+}
+
+// openCodeSesCache keeps the generated ses_ id stable per derived source id.
+var openCodeSesCache sync.Map
+
+// sesBase62 is the charset the OpenCode identifier generator maps random
+// bytes onto (identifier.ts in opencode-upstream).
+const sesBase62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+// newOpenCodeSessionID generates a session id with the same construction as
+// the OpenCode client: 12 hex chars of the descending timestamp
+// ~(unix_ms*0x1000+counter) followed by 14 base62 chars of randomness.
+func newOpenCodeSessionID() string {
+	value := ^(time.Now().UnixMilli()*0x1000 + 1)
+	var timeHex [12]byte
+	for i := 0; i < 6; i++ {
+		hex.Encode(timeHex[2*i:2*i+2], []byte{byte(value >> (40 - 8*i))})
+	}
+	rnd := make([]byte, 14)
+	if _, err := crand.Read(rnd); err != nil {
+		// crypto/rand failure is effectively unreachable; fall back to a
+		// digest-derived tail so an id is still produced.
+		digest := sha256.Sum256(timeHex[:])
+		for i := range rnd {
+			rnd[i] = digest[i%len(digest)]
+		}
+	}
+	var b strings.Builder
+	b.Grow(30)
+	b.WriteString("ses_")
+	b.Write(timeHex[:])
+	for _, r := range rnd {
+		b.WriteByte(sesBase62[int(r)%62])
+	}
+	return b.String()
 }
 
 // upstreamAuthHeaders builds the credential and policy headers every upstream
