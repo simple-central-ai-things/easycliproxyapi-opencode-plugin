@@ -371,9 +371,9 @@ func (c Config) validate() error {
 	if unprefixed > 1 {
 		return fmt.Errorf("plans: at most one enabled plan may disable model-prefix (public model IDs would collide)")
 	}
-	if len(c.APIKeys) == 0 {
-		return fmt.Errorf("api-keys: at least one key is required")
-	}
+	// api-keys is optional: an OAuth-only configuration (console device login)
+	// supplies its credentials through the plugin-owned OAuth records, and the
+	// catalog fetch falls back to an OAuth access token when no API key is set.
 	for i, k := range c.APIKeys {
 		if k.Value == "" {
 			return fmt.Errorf("api-keys[%d].value: expanded to empty", i)

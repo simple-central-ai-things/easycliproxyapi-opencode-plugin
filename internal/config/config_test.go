@@ -210,7 +210,6 @@ func TestLoadRejections(t *testing.T) {
 		{"invalid yaml syntax", "[unclosed", "decode config"},
 		{"unknown anchor has no line info", "request-timeout: *nope\n", "decode config: invalid YAML structure"},
 		{"bare-scalar api key never leaks", "api-keys:\n  - sk-live-secret-123\n", "decode config: invalid YAML structure"},
-		{"keyless config rejected", "", "api-keys: at least one key is required"},
 		{"request-timeout zero rejected", "request-timeout: 0s\n" + withKey, "request-timeout: must be positive"},
 		{
 			"duplicate route-override keys",
@@ -468,5 +467,21 @@ func TestEffectivePlansForHandBuiltConfig(t *testing.T) {
 	}
 	if got := PublicID(c, "glm-5.3"); got != "opencode-go/glm-5.3" {
 		t.Fatalf("PublicID = %q", got)
+	}
+}
+
+// TestLoadAllowsOAuthOnlyConfig pins the v2.4.1 relaxation: a config with
+// no api-keys is valid (OAuth console login supplies the credentials and
+// the catalog fetch falls back to an OAuth token), and defaults still apply.
+func TestLoadAllowsOAuthOnlyConfig(t *testing.T) {
+	c, err := Load([]byte(""))
+	if err != nil {
+		t.Fatalf("OAuth-only (keyless) config must load, got: %v", err)
+	}
+	if len(c.APIKeys) != 0 {
+		t.Fatalf("APIKeys = %d, want 0", len(c.APIKeys))
+	}
+	if c.BaseURL == "" || c.CatalogURL == "" {
+		t.Fatalf("defaults missing: base=%q catalog=%q", c.BaseURL, c.CatalogURL)
 	}
 }

@@ -16,9 +16,12 @@ The re-derived v2.3.0 surface above remains the ABI and config baseline. The
 v2.4.0 release adds free-tier session fingerprinting (genuine-OpenCode-shaped
 bodies, client-identity headers, exact-format session ids), OAuth device-code
 console login as a second credential type, and native-envelope catalog limits.
-None of these change the wire ABI, the registration surface, the artifact
-filename, or the `plans:`/`api-keys` config contract established here; only the
-reported version moves 2.3.0 -> 2.4.0.
+v2.5.0 makes `api-keys` optional so OAuth console login can be the sole
+credential source, with the catalog fetch falling back to an OAuth access
+token when no API key is configured. None of these change the wire ABI, the
+registration surface, or the artifact filename; the `plans:`/`api-keys` config
+contract is unchanged except that `api-keys` is now optional. The reported
+version moves 2.3.0 -> 2.4.0 -> 2.5.0.
 
 ## What "matches the deployed v2.3.0" means here
 

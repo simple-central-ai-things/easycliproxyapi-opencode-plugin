@@ -5,6 +5,22 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
+## v2.5.0 — 2026-11-10 (OAuth can be the sole credential source)
+
+Makes `api-keys` optional so an opencode-go provider configured with only an
+OAuth console login (no API keys) loads and serves models.
+
+- **Optional `api-keys`:** the config no longer rejects an empty `api-keys`
+  list. An OAuth-only configuration (console device login) is valid.
+- **Catalog fetch credential fallback:** the model-catalog fetch used the first
+  configured API key as its bearer. With no API keys set it now falls back to
+  the first plugin-owned OAuth console credential's access token, so the
+  catalog still refreshes. A configured API key always wins when present.
+- **Upgrade notes:** existing `api-keys` configurations are unchanged; this is
+  additive. Deployments that drop the opencode-go API keys from the EasyCLI
+  config and `.env` and rely on the OAuth login now work instead of failing
+  config validation.
+
 ## v2.4.0 — 2026-11-10 (free-tier session fingerprint + OAuth console login)
 
 Builds on the re-derived v2.3.0 deployed surface (below) without changing its

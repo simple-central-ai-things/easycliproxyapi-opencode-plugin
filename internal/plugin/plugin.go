@@ -26,7 +26,7 @@ const ProviderID = "opencode-go"
 // kept in lockstep with registry.json and the deployed artifact.
 const (
 	pluginName    = "easycliproxyapi-opencode-provider"
-	pluginVersion = "2.4.0"
+	pluginVersion = "2.5.0"
 )
 
 // githubRepoURL satisfies the host's validPlugin gate (host.go
@@ -382,10 +382,12 @@ func (m *Manager) handleModelsForAuth(request []byte) ([]byte, error) {
 	m.mu.RLock()
 	mgr, cfg := m.mgr, m.cfg
 	m.mu.RUnlock()
-	if mgr != nil && len(mgr.Models()) == 0 && req.AuthProvider == ProviderID && len(cfg.APIKeys) > 0 {
+	if mgr != nil && len(mgr.Models()) == 0 && req.AuthProvider == ProviderID {
 		ctx, cancel := context.WithTimeout(context.Background(), registerRefreshTimeout)
 		defer cancel()
-		_ = mgr.Refresh(ctx, cfg.APIKeys[0].Value)
+		if bearer := catalogFetchBearer(ctx, cfg, m.bridge); bearer != "" {
+			_ = mgr.Refresh(ctx, bearer)
+		}
 	}
 	return m.handleModels()
 }
@@ -502,6 +504,45 @@ func (m *Manager) closeStop() chan struct{} {
 // refreshOnce runs one bounded catalog refresh. Catalog refresh is not a client
 // request, so the fallback uses the first configured key only and has no client
 // selection, rotation, cooldown, or retry state. parent bounds-and-cancels
+// catalogFetchBearer resolves the bearer token used to fetch the upstream
+// model catalog. A configured API key wins; with none set (an OAuth-only
+// configuration) it falls back to the first plugin-owned OAuth console
+// credential's access token. Returns "" when neither exists — the caller
+// treats that as a failed refresh exactly as before.
+func catalogFetchBearer(ctx context.Context, cfg config.Config, bridge *HostBridge) string {
+	if len(cfg.APIKeys) > 0 {
+		return cfg.APIKeys[0].Value
+	}
+	if bridge == nil {
+		return ""
+	}
+	entries, err := bridge.AuthList(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		isOAuth := strings.HasPrefix(entry.Name, oauthManagedPrefix) ||
+			strings.HasPrefix(entry.ID, oauthManagedPrefix)
+		if !isOAuth || entry.AuthIndex == "" {
+			continue
+		}
+		got, errGet := bridge.AuthGet(ctx, entry.AuthIndex)
+		if errGet != nil || len(got.JSON) == 0 {
+			continue
+		}
+		var raw parsedRecord
+		if json.Unmarshal(got.JSON, &raw) != nil {
+			continue
+		}
+		norm, errNorm := raw.normalizeCredential()
+		if errNorm != nil || norm.bearer == "" {
+			continue
+		}
+		return norm.bearer
+	}
+	return ""
+}
+
 // the attempt: the lifecycle path passes context.Background() plus
 // registerRefreshTimeout; ticker ticks pass the loop's stop-derived context
 // plus the full request-timeout, so close(stop) aborts an in-flight tick
@@ -512,7 +553,7 @@ func refreshOnce(parent context.Context, mgr *catalog.Manager, bridge *HostBridg
 	// authentication remains owned by its AuthProvider and CPA.
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	err := mgr.Refresh(ctx, cfg.APIKeys[0].Value)
+	err := mgr.Refresh(ctx, catalogFetchBearer(ctx, cfg, bridge))
 	if err != nil {
 		if bridge != nil {
 			_ = bridge.Log("warn", "catalog refresh failed", map[string]any{"error": err.Error()})

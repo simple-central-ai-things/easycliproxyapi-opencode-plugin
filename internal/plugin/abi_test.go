@@ -10,7 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
 
-// This file pins the binary/ABI surface the released plugin speaks (v2.4.0, built on the v2.3.0 ABI):
+// This file pins the binary/ABI surface the released plugin speaks (v2.5.0, built on the v2.3.0 ABI):
 // the CLIProxyAPI v8 native ABI version, RPC schema version, registration
 // identity/capabilities, quota-provider card surface and the plan-aware
 // dispatch. Everything here runs offline against synthetic host callbacks.
@@ -84,8 +84,8 @@ func TestABIRegistrationIdentityAndCapabilities(t *testing.T) {
 	if reg.Metadata.Name != "easycliproxyapi-opencode-provider" {
 		t.Fatalf("plugin id = %q, want the SCPM config-contract identity", reg.Metadata.Name)
 	}
-	if reg.Metadata.Version != "2.4.0" {
-		t.Fatalf("version = %q, want 2.4.0 (released artifact)", reg.Metadata.Version)
+	if reg.Metadata.Version != "2.5.0" {
+		t.Fatalf("version = %q, want 2.5.0 (released artifact)", reg.Metadata.Version)
 	}
 	if reg.Metadata.GitHubRepository != "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin" {
 		t.Fatalf("github repository = %q", reg.Metadata.GitHubRepository)
