@@ -47,7 +47,7 @@ quota cards (no plugin-owned management page).
 - Auth records: `opencode-go-key-<sha256(api_key)>.json` in the CPA auth dir;
   reconciled on every register/reconfigure; removals use staged prove-then-delete.
   OAuth Console login (device code flow) adds plugin-owned
-  `opencode-go-oauth-<sha256>.json` credentials (`access_token`/`refresh_token`/
+  `opencode-oauth-<sha256>.json` credentials (`access_token`/`refresh_token`/
   `org_id`) that reconciliation never touches; `grant_type=refresh_token`
   renews them, `invalid_grant` disables. The executor sends whichever bearer
   the credential carries (API key or OAuth access token) and adds

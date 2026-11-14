@@ -82,9 +82,10 @@ tests/live_*_test.go       live-environment regression tests behind the `live` b
   register/reconfigure reconciles records against the config (create/enable,
   staged prove-then-delete for removals). OAuth Console login (device code
   flow) adds a second plugin-owned credential type —
-  `opencode-go-oauth-<sha256>.json` with `access_token`/`refresh_token`/
+  `opencode-oauth-<sha256>.json` with `access_token`/`refresh_token`/
   `org_id`, refreshed via `grant_type=refresh_token` — that reconciliation
-  never touches; a credential is either an API key or an OAuth token (routed
+  never touches (legacy pre-v2.5.2 `opencode-go-oauth-<sha256>.json`
+  records stay detectable until migrated); a credential is either an API key or an OAuth token (routed
   on the `credential_type` attribute), and the executor sends whichever as
   the upstream bearer, adding `x-opencode-org-id` + `User-Agent` for OAuth.
   `executor.count_tokens` and `executor.http_request` return `unsupported`.

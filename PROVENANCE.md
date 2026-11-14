@@ -21,10 +21,13 @@ credential source, with the catalog fetch falling back to an OAuth access
 token when no API key is configured. v2.5.1 names quota-card buckets after
 the window they meter (`rolling`, `weekly`, `monthly`) instead of the
 window's current status token, so consumers can tell the limits apart.
+v2.5.2 renames the plugin-owned OAuth credential files from
+`opencode-go-oauth-<sha256>.json` to `opencode-oauth-<sha256>.json`;
+legacy-prefix records remain detectable until migrated.
 None of these change the wire ABI, the registration surface, or the artifact
 filename; the `plans:`/`api-keys` config contract is unchanged except that
 `api-keys` is now optional. The reported version moves
-2.3.0 -> 2.4.0 -> 2.5.0 -> 2.5.1.
+2.3.0 -> 2.4.0 -> 2.5.0 -> 2.5.1 -> 2.5.2.
 
 ## What "matches the deployed v2.3.0" means here
 

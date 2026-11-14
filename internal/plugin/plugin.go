@@ -26,7 +26,7 @@ const ProviderID = "opencode-go"
 // kept in lockstep with registry.json and the deployed artifact.
 const (
 	pluginName    = "easycliproxyapi-opencode-provider"
-	pluginVersion = "2.5.1"
+	pluginVersion = "2.5.2"
 )
 
 // githubRepoURL satisfies the host's validPlugin gate (host.go
@@ -522,7 +522,9 @@ func catalogFetchBearer(ctx context.Context, cfg config.Config, bridge *HostBrid
 	}
 	for _, entry := range entries {
 		isOAuth := strings.HasPrefix(entry.Name, oauthManagedPrefix) ||
-			strings.HasPrefix(entry.ID, oauthManagedPrefix)
+			strings.HasPrefix(entry.ID, oauthManagedPrefix) ||
+			strings.HasPrefix(entry.Name, oauthLegacyPrefix) ||
+			strings.HasPrefix(entry.ID, oauthLegacyPrefix)
 		if !isOAuth || entry.AuthIndex == "" {
 			continue
 		}

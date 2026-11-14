@@ -5,6 +5,16 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
+## v2.5.2 — 2026-11-14 (OAuth credential naming: opencode-oauth-)
+
+Plugin-owned OAuth console credentials are now written as
+`opencode-oauth-<sha256>.json` instead of `opencode-go-oauth-<sha256>.json`
+(operator naming preference — the provider is opencode-go, the credential
+is an OpenCode OAuth login, not a "go" variant). Existing legacy-prefix
+records keep working: detection accepts both prefixes, and a re-login for
+the same account writes the new name. No wire ABI, registration-surface
+or config change.
+
 ## v2.5.1 — 2026-11-14 (quota buckets named after their window)
 
 Quota-card buckets carried the window's current STATUS ("ok"/"exceeded")

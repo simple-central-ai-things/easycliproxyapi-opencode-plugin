@@ -100,7 +100,7 @@ tests/live_*_test.go       live regression tests behind the `live` build tag (CI
   reconciled against `api-keys` on every register/reconfigure (see
   [Credential reconciliation](#credential-reconciliation)). OAuth console
   logins (device code flow) add a second, plugin-owned credential type:
-  `opencode-go-oauth-<sha256>.json`, carrying `access_token` /
+  `opencode-oauth-<sha256>.json`, carrying `access_token` /
   `refresh_token` / `org_id`; reconciliation never touches those records.
   A credential is either an API key or an OAuth token — routed on the
   `credential_type` attribute — and the executor sends whichever it is as
@@ -346,7 +346,7 @@ Flow (all upstream traffic through the host http bridge):
    `grant_type=urn:ietf:params:oauth:grant-type:device_code`. Repeats until
    `authorization_pending` clears, then fetches the account (`/api/user`) and
    its organizations (`/api/orgs`) and persists a
-   `opencode-go-oauth-<sha256>.json` credential (`access_token`,
+   `opencode-oauth-<sha256>.json` credential (`access_token`,
    `refresh_token`, `expires_at`, `org_id`, account/email metadata).
 4. The host schedules a refresh from `NextRefreshAfter`; `auth.refresh`
    redeems `grant_type=refresh_token`. A `400 invalid_grant` (revoked

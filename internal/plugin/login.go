@@ -41,7 +41,10 @@ const (
 	oauthTokenPath           = "/auth/device/token"
 	oauthUserPath            = "/api/user"
 	oauthOrgsPath            = "/api/orgs"
-	oauthManagedPrefix       = "opencode-go-oauth-"
+	oauthManagedPrefix       = "opencode-oauth-"
+	// oauthLegacyPrefix is the pre-v2.5.2 file naming. Existing records keep
+	// working (detection accepts both); new logins write the new prefix.
+	oauthLegacyPrefix = "opencode-go-oauth-"
 
 	grantDeviceCode   = "urn:ietf:params:oauth:grant-type:device_code"
 	grantRefreshToken = "refresh_token"

@@ -61,6 +61,31 @@ func TestCatalogFetchBearerFallsBackToOAuth(t *testing.T) {
 	}
 }
 
+func TestCatalogFetchBearerAcceptsLegacyOAuthPrefix(t *testing.T) {
+	// Pre-v2.5.2 records (opencode-go-oauth-*) keep working until migrated.
+	bridge := NewHostBridge(oauthHostFake(
+		oauthLegacyPrefix+"deadbeef.json",
+		`{"credential_type":"oauth","access_token":"st_legacy_token"}`, true))
+	cfg := config.Config{}
+	if got := catalogFetchBearer(context.Background(), cfg, bridge); got != "st_legacy_token" {
+		t.Fatalf("bearer = %q, want the legacy-prefix OAuth access token", got)
+	}
+}
+
+func TestOAuthRecordIDUsesTheNewPrefix(t *testing.T) {
+	id := oauthRecordID("acct-1", "user@example.test", "rt")
+	if !strings.HasPrefix(id, oauthManagedPrefix) {
+		t.Fatalf("record id = %q, want the %q prefix", id, oauthManagedPrefix)
+	}
+	if strings.HasPrefix(id, oauthLegacyPrefix) {
+		t.Fatalf("record id = %q, must not use the legacy prefix", id)
+	}
+	// Same account -> same record (re-login overwrites, never duplicates).
+	if again := oauthRecordID("acct-1", "other@example.test", "rt2"); again != id {
+		t.Fatalf("record id not stable for the same account: %q vs %q", id, again)
+	}
+}
+
 func TestCatalogFetchBearerSkipsNonOAuthRecords(t *testing.T) {
 	// A managed API-key record must not be mistaken for an OAuth credential.
 	bridge := NewHostBridge(oauthHostFake(
