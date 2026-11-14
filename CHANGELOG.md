@@ -5,6 +5,13 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
+## v2.5.3 — 2026-11-14 (duration-style window labels)
+
+Quota buckets now use the shared duration convention: the rolling window
+is `5h`, the weekly window `7d` and the monthly window `30d`, matching
+the native Codex card labels. Values, resets and the wire ABI are
+unchanged.
+
 ## v2.5.2 — 2026-11-14 (OAuth credential naming: opencode-oauth-)
 
 Plugin-owned OAuth console credentials are now written as

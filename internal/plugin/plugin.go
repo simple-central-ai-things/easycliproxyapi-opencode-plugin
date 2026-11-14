@@ -26,7 +26,7 @@ const ProviderID = "opencode-go"
 // kept in lockstep with registry.json and the deployed artifact.
 const (
 	pluginName    = "easycliproxyapi-opencode-provider"
-	pluginVersion = "2.5.2"
+	pluginVersion = "2.5.3"
 )
 
 // githubRepoURL satisfies the host's validPlugin gate (host.go

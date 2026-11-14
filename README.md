@@ -60,7 +60,7 @@ This plugin exposes OpenCode Go as a single provider (`opencode-go`) backed by a
 - **Multi-Key Auth Scheduling**: Pools multiple API keys with CLIProxyAPI's native scheduler for rotation, retries, and error cooldowns across all protocols.
 - **Config-authoritative credentials**: `api-keys` is the single source of truth. Every configured key is materialized as a CPA auth record; a key removed from the config has its record **deleted** (the auth file is unlinked, since the plugin ABI has no delete callback, and CPA's auth-directory watcher unregisters it), and putting the key back recreates it. Records the plugin cannot prove it created are never touched. See [Credential reconciliation](#credential-reconciliation).
 - **OAuth Console login (device code flow)**: Sign in to an opencode.ai Console account straight from the host login flow — no PKCE, no loopback callback port. The OAuth access token serves as the upstream bearer and carries the organization scope (`x-opencode-org-id`), which a plain console API key may lack. API-key credentials keep working alongside. See [OAuth Console login](#oauth-console-login).
-- **Quota Cards**: the v8 `QuotaProvider` interface renders rolling, weekly and monthly windows on the host's native credential cards. Quota values never affect routing, and the plugin ships no management page or management route.
+- **Quota Cards**: the v8 `QuotaProvider` interface renders the rolling (5h), weekly (7d) and monthly (30d) windows on the host's native credential cards. Quota values never affect routing, and the plugin ships no management page or management route.
 
 ## Layout
 

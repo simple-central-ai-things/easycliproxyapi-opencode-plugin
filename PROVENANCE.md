@@ -23,11 +23,12 @@ the window they meter (`rolling`, `weekly`, `monthly`) instead of the
 window's current status token, so consumers can tell the limits apart.
 v2.5.2 renames the plugin-owned OAuth credential files from
 `opencode-go-oauth-<sha256>.json` to `opencode-oauth-<sha256>.json`;
-legacy-prefix records remain detectable until migrated.
+legacy-prefix records remain detectable until migrated. v2.5.3 labels the
+quota buckets with the shared duration convention (`5h`, `7d`, `30d`).
 None of these change the wire ABI, the registration surface, or the artifact
 filename; the `plans:`/`api-keys` config contract is unchanged except that
 `api-keys` is now optional. The reported version moves
-2.3.0 -> 2.4.0 -> 2.5.0 -> 2.5.1 -> 2.5.2.
+2.3.0 -> 2.4.0 -> 2.5.0 -> 2.5.1 -> 2.5.2 -> 2.5.3.
 
 ## What "matches the deployed v2.3.0" means here
 

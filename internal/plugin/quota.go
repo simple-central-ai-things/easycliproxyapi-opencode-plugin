@@ -150,9 +150,9 @@ func quotaFetchResponseFromUsage(planName string, usage quotaUsage) pluginapi.Qu
 		name        string
 		description string
 	}{
-		{usage.Rolling, "rolling", "Rolling usage window"},
-		{usage.Weekly, "weekly", "Weekly usage window"},
-		{usage.Monthly, "monthly", "Monthly usage window"},
+		{usage.Rolling, "5h", "Rolling usage window"},
+		{usage.Weekly, "7d", "Weekly usage window"},
+		{usage.Monthly, "30d", "Monthly usage window"},
 	} {
 		if quotaWindowPresent(w.window) {
 			buckets = append(buckets, quotaBucketFromWindow(w.window, w.name, w.description))

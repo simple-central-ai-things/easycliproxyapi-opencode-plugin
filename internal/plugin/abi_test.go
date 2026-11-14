@@ -84,8 +84,8 @@ func TestABIRegistrationIdentityAndCapabilities(t *testing.T) {
 	if reg.Metadata.Name != "easycliproxyapi-opencode-provider" {
 		t.Fatalf("plugin id = %q, want the SCPM config-contract identity", reg.Metadata.Name)
 	}
-	if reg.Metadata.Version != "2.5.2" {
-		t.Fatalf("version = %q, want 2.5.2 (released artifact)", reg.Metadata.Version)
+	if reg.Metadata.Version != "2.5.3" {
+		t.Fatalf("version = %q, want 2.5.3 (released artifact)", reg.Metadata.Version)
 	}
 	if reg.Metadata.GitHubRepository != "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin" {
 		t.Fatalf("github repository = %q", reg.Metadata.GitHubRepository)

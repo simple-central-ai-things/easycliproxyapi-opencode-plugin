@@ -108,7 +108,7 @@ func TestQuotaFetchCardSurface(t *testing.T) {
 		t.Fatalf("groups = %+v", card.Groups)
 	}
 	bucket := card.Groups[0].Buckets[0]
-	if bucket.RemainingFraction != 0.91 || bucket.ResetTime != "2026-09-05T12:20:04Z" || bucket.Window != "rolling" {
+	if bucket.RemainingFraction != 0.91 || bucket.ResetTime != "2026-09-05T12:20:04Z" || bucket.Window != "5h" {
 		t.Fatalf("rolling bucket = %+v", bucket)
 	}
 	if len(card.Summary) != 1 || card.Summary[0].Value != 94 {
