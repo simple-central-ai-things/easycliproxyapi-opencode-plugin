@@ -147,14 +147,15 @@ func quotaFetchResponseFromUsage(planName string, usage quotaUsage) pluginapi.Qu
 	buckets := make([]pluginapi.QuotaBucket, 0, 3)
 	for _, w := range []struct {
 		window      quotaWindow
+		name        string
 		description string
 	}{
-		{usage.Rolling, "Rolling usage window"},
-		{usage.Weekly, "Weekly usage window"},
-		{usage.Monthly, "Monthly usage window"},
+		{usage.Rolling, "rolling", "Rolling usage window"},
+		{usage.Weekly, "weekly", "Weekly usage window"},
+		{usage.Monthly, "monthly", "Monthly usage window"},
 	} {
 		if quotaWindowPresent(w.window) {
-			buckets = append(buckets, quotaBucketFromWindow(w.window, w.description))
+			buckets = append(buckets, quotaBucketFromWindow(w.window, w.name, w.description))
 		}
 	}
 	if len(buckets) > 0 {
@@ -185,9 +186,13 @@ func quotaRemainingPercent(percent int) float64 {
 	}
 }
 
-func quotaBucketFromWindow(w quotaWindow, description string) pluginapi.QuotaBucket {
+// quotaBucketFromWindow names the bucket after the WINDOW it meters, never
+// after the window's current status: a status ("ok"/"exceeded") describes a
+// moment, the window name identifies the limit across refreshes. The state
+// rides RemainingFraction.
+func quotaBucketFromWindow(w quotaWindow, name, description string) pluginapi.QuotaBucket {
 	return pluginapi.QuotaBucket{
-		Window:            w.Status,
+		Window:            name,
 		RemainingFraction: quotaRemainingPercent(w.Percent) / 100,
 		ResetTime:         w.ResetsAt,
 		Description:       description,

@@ -96,8 +96,8 @@ func TestReleaseArtifactNamesAreStable(t *testing.T) {
 	if pluginName != "easycliproxyapi-opencode-provider" {
 		t.Fatalf("runtime plugin id = %q, the EasyCLI config contract pins easycliproxyapi-opencode-provider", pluginName)
 	}
-	if pluginVersion != "2.5.0" {
-		t.Fatalf("plugin version = %q, the released v2.5.0 surface is pinned", pluginVersion)
+	if pluginVersion != "2.5.1" {
+		t.Fatalf("plugin version = %q, the released v2.5.1 surface is pinned", pluginVersion)
 	}
 	build := readRepoFile(t, buildWorkflowPath)
 	for _, want := range []string{

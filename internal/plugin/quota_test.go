@@ -108,7 +108,7 @@ func TestQuotaFetchCardSurface(t *testing.T) {
 		t.Fatalf("groups = %+v", card.Groups)
 	}
 	bucket := card.Groups[0].Buckets[0]
-	if bucket.RemainingFraction != 0.91 || bucket.ResetTime != "2026-09-05T12:20:04Z" || bucket.Window != "ok" {
+	if bucket.RemainingFraction != 0.91 || bucket.ResetTime != "2026-09-05T12:20:04Z" || bucket.Window != "rolling" {
 		t.Fatalf("rolling bucket = %+v", bucket)
 	}
 	if len(card.Summary) != 1 || card.Summary[0].Value != 94 {
@@ -276,7 +276,7 @@ func TestQuotaRemainingFractionClampsToBarBounds(t *testing.T) {
 		percent int
 		want    float64
 	}{{-20, 1}, {0, 1}, {37, 0.63}, {100, 0}, {140, 0}} {
-		if got := quotaBucketFromWindow(quotaWindow{Status: "ok", Percent: tc.percent}, "window").RemainingFraction; got != tc.want {
+		if got := quotaBucketFromWindow(quotaWindow{Status: "ok", Percent: tc.percent}, "window", "test window").RemainingFraction; got != tc.want {
 			t.Fatalf("percent %d -> fraction %v, want %v", tc.percent, got, tc.want)
 		}
 		if got := quotaRemainingPercent(tc.percent); got != tc.want*100 {

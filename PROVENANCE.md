@@ -18,10 +18,13 @@ bodies, client-identity headers, exact-format session ids), OAuth device-code
 console login as a second credential type, and native-envelope catalog limits.
 v2.5.0 makes `api-keys` optional so OAuth console login can be the sole
 credential source, with the catalog fetch falling back to an OAuth access
-token when no API key is configured. None of these change the wire ABI, the
-registration surface, or the artifact filename; the `plans:`/`api-keys` config
-contract is unchanged except that `api-keys` is now optional. The reported
-version moves 2.3.0 -> 2.4.0 -> 2.5.0.
+token when no API key is configured. v2.5.1 names quota-card buckets after
+the window they meter (`rolling`, `weekly`, `monthly`) instead of the
+window's current status token, so consumers can tell the limits apart.
+None of these change the wire ABI, the registration surface, or the artifact
+filename; the `plans:`/`api-keys` config contract is unchanged except that
+`api-keys` is now optional. The reported version moves
+2.3.0 -> 2.4.0 -> 2.5.0 -> 2.5.1.
 
 ## What "matches the deployed v2.3.0" means here
 

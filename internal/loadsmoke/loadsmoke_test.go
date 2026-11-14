@@ -255,7 +255,7 @@ catalog:
 		t.Fatalf("schema_version = %d, want %d", registration.SchemaVersion, pluginabi.SchemaVersion)
 	}
 	if registration.Metadata.Name != pluginID ||
-		registration.Metadata.Version != "2.5.0" ||
+		registration.Metadata.Version != "2.5.1" ||
 		registration.Metadata.GitHubRepository != "https://github.com/simple-central-ai-things/easycliproxyapi-opencode-plugin" {
 		t.Fatalf("identity = %+v", registration.Metadata)
 	}

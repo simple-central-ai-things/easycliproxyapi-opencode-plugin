@@ -5,6 +5,15 @@ User-facing release summaries for the OpenCode Go EasyCLI provider plugin.
 the running history. Releases before v2.3.0 are reachable through the git tags
 (`v0.1.x` upstream lineage, `v1.0.0`–`v1.0.3`).
 
+## v2.5.1 — 2026-11-14 (quota buckets named after their window)
+
+Quota-card buckets carried the window's current STATUS ("ok"/"exceeded")
+in the `window` field, so every bucket read "ok" and consumers could not
+tell the rolling, weekly and monthly limits apart. Buckets are now named
+after the window they meter (`rolling`, `weekly`, `monthly`); the state
+rides `remaining_fraction` as before. No wire ABI, registration-surface
+or config change.
+
 ## v2.5.0 — 2026-11-10 (OAuth can be the sole credential source)
 
 Makes `api-keys` optional so an opencode-go provider configured with only an
